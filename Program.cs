@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -46,6 +49,25 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("Settings persistence: " + (settings ? "PASS" : "FAIL"));
                 Console.WriteLine("Battery cache persistence: " + (cache ? "PASS" : "FAIL"));
                 Environment.ExitCode = protocol && registry && policy && settings && cache ? 0 : 1;
+                return;
+            }
+            if (arg == "--render-preview")
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var providers = ProviderRegistry.Load(false);
+                var cached = new BatterySnapshotStore().Snapshot(providers.Select(x => x.Id));
+                using (var panel = new BatteryPanel())
+                {
+                    panel.UpdateData(cached, providers, new AppPreferencesStore().Load());
+                    using (var bitmap = new Bitmap(panel.Width, panel.Height))
+                    {
+                        panel.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                        string location = Path.Combine(Path.GetTempPath(), "PeripheralBatteryLite-preview.png");
+                        bitmap.Save(location, ImageFormat.Png);
+                        Console.WriteLine("PREVIEW=" + location);
+                    }
+                }
                 return;
             }
             if (arg == "--cache-self-test" || arg == "--scheduler-self-test")

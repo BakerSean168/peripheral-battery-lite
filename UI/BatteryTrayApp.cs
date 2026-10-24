@@ -24,6 +24,7 @@ namespace PeripheralBatteryLite
         private int isRefreshing;
         private bool closing;
         private bool settingsOpen;
+        private bool updatingMenus;
 
         public BatteryTrayApp()
         {
@@ -48,7 +49,7 @@ namespace PeripheralBatteryLite
             pinnedMenu = new ToolStripMenuItem("固定悬浮窗") { Checked = prefs.PinPanel, CheckOnClick = true };
             pinnedMenu.CheckedChanged += (s, e) =>
             {
-                if (closing) return;
+                if (closing || updatingMenus) return;
                 prefs.PinPanel = pinnedMenu.Checked;
                 panel.Pinned = prefs.PinPanel;
                 preferencesStore.Save(prefs);
@@ -58,12 +59,13 @@ namespace PeripheralBatteryLite
             autostartMenu = new ToolStripMenuItem("随 Windows 启动") { Checked = StartupRegistration.Enabled, CheckOnClick = true };
             autostartMenu.CheckedChanged += (s, e) =>
             {
-                if (closing) return;
+                if (closing || updatingMenus) return;
                 string error;
                 if (!StartupRegistration.SetEnabled(autostartMenu.Checked, out error))
                 {
-                    autostartMenu.CheckedChanged -= IgnoreChecked;
-                    autostartMenu.Checked = StartupRegistration.Enabled;
+                    updatingMenus = true;
+                    try { autostartMenu.Checked = StartupRegistration.Enabled; }
+                    finally { updatingMenus = false; }
                     MessageBox.Show(error, "开机自启动配置失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             };
@@ -86,8 +88,6 @@ namespace PeripheralBatteryLite
 
             DisplayCache();
         }
-
-        private void IgnoreChecked(object s, EventArgs e) {}
 
         private void TickAutoRefresh()
         {
@@ -178,11 +178,9 @@ namespace PeripheralBatteryLite
                     }
                     prefs = next;
                     panel.Pinned = prefs.PinPanel;
-                    if (pinnedMenu.Checked != prefs.PinPanel)
-                    {
-                        pinnedMenu.CheckedChanged -= PinnedNoop;
-                        pinnedMenu.Checked = prefs.PinPanel;
-                    }
+                    updatingMenus = true;
+                    try { pinnedMenu.Checked = prefs.PinPanel; }
+                    finally { updatingMenus = false; }
                     // Apply the persisted options to in-memory scheduling immediately.
                     scheduler.Enabled = prefs.IntervalMinutes > 0;
                     string error;
@@ -192,7 +190,9 @@ namespace PeripheralBatteryLite
                         MessageBox.Show(error, "开机自启动配置失败",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     }
-                    autostartMenu.Checked = StartupRegistration.Enabled;
+                    updatingMenus = true;
+                    try { autostartMenu.Checked = StartupRegistration.Enabled; }
+                    finally { updatingMenus = false; }
                     DisplayCache();
                     if (requiresRestart)
                         MessageBox.Show("外部插件开关将在下次启动程序后生效。",
@@ -201,8 +201,6 @@ namespace PeripheralBatteryLite
             }
             finally { settingsOpen = false; }
         }
-
-        private void PinnedNoop(object s, EventArgs e) {}
 
         private void ShowPanel()
         {

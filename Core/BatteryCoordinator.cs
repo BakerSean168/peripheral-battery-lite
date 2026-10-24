@@ -12,7 +12,9 @@ namespace PeripheralBatteryLite
             if (providers == null || providers.Count == 0) return result;
 
             List<HidEndpoint> endpoints;
-            try { endpoints = HidWindows.Enumerate(); }
+            bool externalProviders = providers.Any(p =>
+                p.GetType().Assembly != typeof(BatteryCoordinator).Assembly);
+            try { endpoints = HidWindows.Enumerate(externalProviders); }
             catch (Exception error)
             {
                 return providers.Select(p => new BatteryReading
