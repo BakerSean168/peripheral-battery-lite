@@ -1,0 +1,20 @@
+# Build outputs and runtime state
+dist/
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.pdb
+*.tmp
+*.log
+battery-cache.json
+settings.json
+
+# Original exploratory one-off diagnostics
+KeyboardProbe.cs
+build-keyboard-probe.ps1
+diagnose-modes.ps1
+smoke-ui.ps1
+verify-manual-cache.ps1
