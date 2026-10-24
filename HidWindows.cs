@@ -6,7 +6,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PeripheralBatteryLite
 {
-    internal sealed class HidEndpoint
+    public sealed class HidEndpoint
     {
         public string Path;
         public string ProductName;
@@ -19,7 +19,7 @@ namespace PeripheralBatteryLite
         }
     }
 
-    internal static class HidWindows
+    public static class HidWindows
     {
         private const uint DIGCF_PRESENT = 0x02, DIGCF_DEVICEINTERFACE = 0x10;
         private const uint GENERIC_READ = 0x80000000, GENERIC_WRITE = 0x40000000;

@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PeripheralBatteryLite
 {
-    internal sealed class BatteryReading
+    public sealed class BatteryReading
     {
         public string Name, Status, Connection;
         public int? Percent;
@@ -60,7 +60,12 @@ namespace PeripheralBatteryLite
 
         public static BatteryReading ReadMouseOnly()
         {
-            return ReadOne(HidWindows.Enumerate(), "ATK F1V3", 0x373B, 0x1303, true);
+            return ReadMouse(HidWindows.Enumerate());
+        }
+
+        public static BatteryReading ReadMouse(List<HidEndpoint> devices)
+        {
+            return ReadOne(devices, "ATK F1V3", 0x373B, 0x1303, true);
         }
 
         public static List<BatteryReading> ReadAll()
