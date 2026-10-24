@@ -46,7 +46,8 @@ namespace PeripheralBatteryLite
             cachePath = path ?? Path.Combine(Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData), "PeripheralBatteryLite", "battery-cache.json");
             state = Read(cachePath);
-            state.Devices.RemoveAll(d => d == null || !KnownIds.Contains(d.DeviceId));
+            state.Devices.RemoveAll(d => d == null || string.IsNullOrWhiteSpace(d.DeviceId) || d.DeviceId.Length > 128);
+            // Preserve extension provider cache entries, even when a plugin is disabled.
             foreach (string id in KnownIds)
             {
                 if (!state.Devices.Any(d => d.DeviceId == id))
@@ -85,12 +86,15 @@ namespace PeripheralBatteryLite
             return null;
         }
 
-        public List<BatteryReading> Snapshot()
+        public List<BatteryReading> Snapshot(IEnumerable<string> preferredOrder = null)
         {
             var result = new List<BatteryReading>();
-            foreach (string id in KnownIds)
+            var ids = (preferredOrder ?? KnownIds).Concat(state.Devices.Select(x => x.DeviceId))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            foreach (string id in ids)
             {
-                var stored = state.Devices.First(d => d.DeviceId == id);
+                var stored = state.Devices.FirstOrDefault(d => string.Equals(d.DeviceId, id, StringComparison.OrdinalIgnoreCase));
+                if (stored == null) stored = new StoredBattery { DeviceId = id };
                 var successful = ParseUtc(stored.LastSuccessUtc);
                 var attempted = ParseUtc(stored.LastQueryUtc);
                 var reading = new BatteryReading
@@ -118,7 +122,13 @@ namespace PeripheralBatteryLite
             foreach (var newReading in fresh)
             {
                 var stored = state.Devices.FirstOrDefault(d => d.DeviceId == newReading.Name);
-                if (stored == null) continue;
+                if (stored == null)
+                {
+                    if (string.IsNullOrWhiteSpace(newReading.Name) || newReading.Name.Length > 128)
+                        continue;
+                    stored = new StoredBattery { DeviceId = newReading.Name };
+                    state.Devices.Add(stored);
+                }
                 string time = NowIso();
                 stored.LastQueryUtc = time;
                 bool okay = newReading.Status == "OK" && newReading.Percent.HasValue &&

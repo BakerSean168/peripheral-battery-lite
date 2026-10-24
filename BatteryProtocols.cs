@@ -4,29 +4,6 @@ using System.Linq;
 
 namespace PeripheralBatteryLite
 {
-    internal sealed class BatteryReading
-    {
-        public string Name, Status, Connection;
-        public int? Percent;
-        public bool? Charging;
-        public DateTime? LastSuccessUtc;
-        public DateTime? LastQueryUtc;
-        public ushort Vid, Pid;
-        public string Detail;
-        public string Display { get { return Percent.HasValue ? Percent.Value + "%" : "--"; } }
-        public string Json
-        {
-            get
-            {
-                string pct = Percent.HasValue ? Percent.Value.ToString() : "null";
-                string ch = Charging.HasValue ? (Charging.Value ? "true" : "false") : "null";
-                return "{\"name\":\"" + Name + "\",\"vid_pid\":\"" + Vid.ToString("X4") + ":" + Pid.ToString("X4")
-                    + "\",\"percent\":" + pct + ",\"charging\":" + ch
-                    + ",\"status\":\"" + Status + "\"}";
-            }
-        }
-    }
-
     internal static class BatteryProtocols
     {
         public static bool ParseMouse(byte[] b, out int percent, out bool charging)
@@ -60,7 +37,12 @@ namespace PeripheralBatteryLite
 
         public static BatteryReading ReadMouseOnly()
         {
-            return ReadOne(HidWindows.Enumerate(), "ATK F1V3", 0x373B, 0x1303, true);
+            return ReadMouse(HidWindows.Enumerate());
+        }
+
+        public static BatteryReading ReadMouse(List<HidEndpoint> devices)
+        {
+            return ReadOne(devices, "ATK F1V3", 0x373B, 0x1303, true);
         }
 
         public static List<BatteryReading> ReadAll()

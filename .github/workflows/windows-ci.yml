@@ -1,0 +1,46 @@
+name: Windows build and unit tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile native tray and diagnostic executables
+        shell: pwsh
+        run: ./build.ps1
+      - name: Validate HID parsers, provider registry, scheduler and cache
+        shell: pwsh
+        run: |
+          & .\dist\PeripheralBatteryLite.Probe.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --scheduler-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --cache-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify external plugin ABI against shared Contracts DLL
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .\dist\Plugins -Force | Out-Null
+          $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          & $compiler /nologo /target:library "/out:dist\Plugins\ExampleBatteryProvider.dll" "/r:dist\PeripheralBatteryLite.Contracts.dll" .\tests\SamplePlugin.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --plugin-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item .\dist\Plugins -Recurse -Force
+      - name: Upload portable Windows program
+        uses: actions/upload-artifact@v4
+        with:
+          name: peripheral-battery-lite-windows-x64
+          path: |
+            dist/PeripheralBatteryLite.exe
+            dist/PeripheralBatteryLite.Probe.exe
+            dist/PeripheralBatteryLite.Contracts.dll
+            README.md
+          if-no-files-found: error

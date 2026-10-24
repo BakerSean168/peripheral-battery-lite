@@ -6,7 +6,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PeripheralBatteryLite
 {
-    internal sealed class HidEndpoint
+    public sealed class HidEndpoint
     {
         public string Path;
         public string ProductName;
@@ -19,7 +19,7 @@ namespace PeripheralBatteryLite
         }
     }
 
-    internal static class HidWindows
+    public static class HidWindows
     {
         private const uint DIGCF_PRESENT = 0x02, DIGCF_DEVICEINTERFACE = 0x10;
         private const uint GENERIC_READ = 0x80000000, GENERIC_WRITE = 0x40000000;
@@ -77,7 +77,7 @@ namespace PeripheralBatteryLite
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CancelIoEx(SafeFileHandle handle, IntPtr overlapped);
 
-        public static List<HidEndpoint> Enumerate()
+        public static List<HidEndpoint> Enumerate(bool includeOtherVendorDevices = false)
         {
             var found = new List<HidEndpoint>();
             Guid guid; HidD_GetHidGuid(out guid);
@@ -103,24 +103,25 @@ namespace PeripheralBatteryLite
                         string path = Marshal.PtrToStringUni(IntPtr.Add(buffer, 4));
                         if (string.IsNullOrEmpty(path)) continue;
                         string lower = path.ToLowerInvariant();
-                        if (!(lower.Contains("vid_373b&pid_1303") || lower.Contains("vid_320f&pid_5055") ||
-                              lower.Contains("vid_320f&pid_5088") || lower.Contains("vid_1038&pid_2232")))
-                            continue;
+                        bool known = lower.Contains("vid_373b&pid_1303") ||
+                            lower.Contains("vid_320f&pid_5055") || lower.Contains("vid_320f&pid_5088") ||
+                            lower.Contains("vid_1038&pid_2232");
+                        if (!known && !includeOtherVendorDevices) continue;
                         using (var handle = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
                             IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero))
                         {
                             if (handle.IsInvalid) continue;
                             var attrs = new HiddAttributes { Size = Marshal.SizeOf(typeof(HiddAttributes)) };
                             if (!HidD_GetAttributes(handle, ref attrs)) continue;
-                            if (!((attrs.VendorID == 0x373B && attrs.ProductID == 0x1303) ||
-                                  (attrs.VendorID == 0x320F && (attrs.ProductID == 0x5055 || attrs.ProductID == 0x5088)) ||
-                                  (attrs.VendorID == 0x1038 && attrs.ProductID == 0x2232))) continue;
+                            if (!known && !includeOtherVendorDevices) continue;
                             IntPtr prep;
                             if (!HidD_GetPreparsedData(handle, out prep)) continue;
                             try
                             {
                                 var caps = new HidpCaps();
                                 if (HidP_GetCaps(prep, ref caps) != 0x00110000) continue;
+                                // Extension discovery considers only vendor-defined HID collections.
+                                if (!known && caps.UsagePage < 0xFF00) continue;
                                 string product = "";
                                 byte[] strBuf = new byte[256];
                                 if (HidD_GetProductString(handle, strBuf, strBuf.Length))
