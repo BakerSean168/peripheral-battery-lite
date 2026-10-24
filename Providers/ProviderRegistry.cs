@@ -6,21 +6,6 @@ using System.Reflection;
 
 namespace PeripheralBatteryLite
 {
-    // A provider is a self-contained device protocol. A third-party assembly can
-    // reference PeripheralBatteryLite.exe and implement this public interface.
-    // Loading external DLLs is opt-in: arbitrary DLL code is not sandboxed.
-    public enum ActivityCategory { Mouse, Keyboard, Audio, Other }
-
-    public interface IBatteryProvider
-    {
-        string Id { get; }
-        string DisplayName { get; }
-        string ShortName { get; }
-        int SortOrder { get; }
-        ActivityCategory Activity { get; }
-        BatteryReading Query(List<HidEndpoint> interfaces);
-    }
-
     internal static class ProviderRegistry
     {
         public static List<string> LoadErrors = new List<string>();

@@ -54,6 +54,18 @@ namespace PeripheralBatteryLite
                 Environment.ExitCode = protocol && registry && policy && settings && cache && isolated ? 0 : 1;
                 return;
             }
+            if (arg == "--plugin-self-test")
+            {
+                var builtin = ProviderRegistry.Load(false);
+                var extended = ProviderRegistry.Load(true);
+                bool good = builtin.Count == 3 &&
+                    extended.Any(p => p.Id == "Example Test Peripheral") &&
+                    extended.Count == 4;
+                Console.WriteLine(good ? "PASS: external plugin contracts load in diagnostics process" :
+                    "FAIL: contracts plugin compatibility: " + string.Join("; ", ProviderRegistry.LoadErrors));
+                Environment.ExitCode = good ? 0 : 1;
+                return;
+            }
             if (arg == "--render-preview")
             {
                 Application.EnableVisualStyles();

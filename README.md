@@ -15,12 +15,13 @@ connected hardware in Windows 11.
 
 ## Features
 
-- Native C# / WinForms, .NET Framework 4.8, Windows HID APIs; no Electron,
+- Native C# / WinForms, .NET Framework 4.8, Windows HID APIs; the
+  `PeripheralBatteryLite.Contracts.dll` library provides a stable plugin ABI. No Electron,
   Chromium, Node.js background server, account login or internet traffic.
 - Compact dark floating battery dashboard with battery bars, last-query
   timestamps, a tray percentage icon, manual refresh and a settings dialog.
 - Saves successful readings and timestamps under
-  \`%LOCALAPPDATA%\PeripheralBatteryLite\battery-cache.json\`.
+  `%LOCALAPPDATA%\PeripheralBatteryLite\battery-cache.json`.
   Query failures retain the last successful reading.
 - Automatic polling is **OFF by default**. Optional intervals: 30 minutes,
   1 hour, 2 hours, 5 hours. A 30-second local timer checks only whether a
@@ -33,19 +34,19 @@ connected hardware in Windows 11.
   dongle. With activity-only enabled, Nova 5 is **manual-refresh-only**.
   Disabling activity-only allows it to be auto-queried at the selected interval.
 - Windows startup setting via current-user Run registry key (no admin).
-- Modular \`IBatteryProvider\` registry: built-ins are discovered by reflection.
-  User-installed DLLs under \`Plugins/\` can be enabled explicitly, and are
+- Modular `IBatteryProvider` registry: built-ins are discovered by reflection.
+  User-installed DLLs under `Plugins/` can be enabled explicitly, and are
   **disabled by default**. See [Provider guide](docs/PLUGINS.md).
 
 ## Usage
 
-Download/build the EXEs and run \`PeripheralBatteryLite.exe\`. Click the
+Download/build the EXEs and run `PeripheralBatteryLite.exe`. Click the
 notification area icon to open the dashboard. Click **刷新电量** to update all
 three devices. Click **设置** to change the polling interval, activity check,
 startup preference, pin behavior and optional external plugins.
 
 If the app runs but its icon is hidden, expand the Windows system tray with
-\`^\`.
+`^`.
 
 To prevent queries from waking a sleeping wireless keyboard, retain the
 default manual-refresh-only mode, or enable activity-only automatic refresh.
@@ -54,42 +55,42 @@ sleep-state detector. Manual refresh can wake a sleeping device.
 
 ## Development and build
 
-Source of truth: \`/home/ubuntu/projects/peripheral-battery-lite\` on Oracle2.
+Source of truth: `/home/ubuntu/projects/peripheral-battery-lite` on Oracle2.
 
 Since it uses WinForms and Win32 HID, build and hardware test on Windows 10/11.
 The Oracle2 ARM64 VPS stores the Git source and implements the application;
 the Windows 11 machine compiles the native x64 EXEs using its built-in
-\`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe\`.
+`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`.
 
 PowerShell:
 
-\`\`\`powershell
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 .\dist\PeripheralBatteryLite.Probe.exe --self-test
 .\dist\PeripheralBatteryLite.Probe.exe --cache-show
 .\dist\PeripheralBatteryLite.Probe.exe --settings-show
 .\dist\PeripheralBatteryLite.exe
-\`\`\`
+```
 
 A GitHub Actions Windows job builds the portable binary and runs headless
 parser, registry, scheduling, settings and cache tests on each push/PR.
 
 ### Diagnostic commands
 
-\`PeripheralBatteryLite.Probe.exe\` supports:
+`PeripheralBatteryLite.Probe.exe` supports:
 
-- \`--self-test\`: protocol parsers, registry, scheduler, persistence tests
-- \`--scheduler-self-test\`, \`--cache-self-test\`: isolated tests
-- \`--cache-show\`, \`--settings-show\`: read local state only
-- \`--probe\`: enumerate supported HID descriptors (read-only)
-- \`--once\`: query each connected device without touching cache
-- \`--refresh-cache\`: query and persist battery values
-- \`--mouse-only\`, \`--keyboard-only\`, \`--headset-only\`: targeted reads
-- \`--render-preview\`: render a UI preview PNG into Windows Temp (no HID reads)
+- `--self-test`: protocol parsers, registry, scheduler, persistence tests
+- `--scheduler-self-test`, `--cache-self-test`: isolated tests
+- `--cache-show`, `--settings-show`: read local state only
+- `--probe`: enumerate supported HID descriptors (read-only)
+- `--once`: query each connected device without touching cache
+- `--refresh-cache`: query and persist battery values
+- `--mouse-only`, `--keyboard-only`, `--headset-only`: targeted reads
+- `--render-preview`: render a UI preview PNG into Windows Temp (no HID reads)
 
 ## Architecture
 
-\`\`\`text
+```text
 WinForms tray / BatteryPanel / SettingsForm
     |
     +--> AppPreferencesStore ---- settings.json
@@ -105,7 +106,7 @@ WinForms tray / BatteryPanel / SettingsForm
                           +--> optional trusted DLL providers
                                       |
                                       +--> HidWindows / SetupAPI / USB HID
-\`\`\`
+```
 
 Queries are allowed only as a result of an explicit refresh or an eligible
 opted-in timer event. The device protocols send known battery/status commands,

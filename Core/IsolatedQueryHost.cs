@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -12,11 +13,11 @@ namespace PeripheralBatteryLite
     [DataContract]
     internal sealed class ProviderPayload
     {
-        [DataMember(Name = "name")] public string Name;
-        [DataMember(Name = "vid_pid")] public string VidPid;
-        [DataMember(Name = "percent")] public int? Percent;
-        [DataMember(Name = "charging")] public bool? Charging;
-        [DataMember(Name = "status")] public string Status;
+        [DataMember(Name = "name")] public string Name { get; set; }
+        [DataMember(Name = "vid_pid")] public string VidPid { get; set; }
+        [DataMember(Name = "percent")] public int? Percent { get; set; }
+        [DataMember(Name = "charging")] public bool? Charging { get; set; }
+        [DataMember(Name = "status")] public string Status { get; set; }
     }
 
     internal static class IsolatedQueryHost
@@ -110,10 +111,19 @@ namespace PeripheralBatteryLite
                         string.IsNullOrWhiteSpace(obj.Status) ||
                         (obj.Percent.HasValue && (obj.Percent < 0 || obj.Percent > 100)))
                         return false;
+                    var pair = (obj.VidPid ?? "").Split(':');
+                    ushort vid = 0, pid = 0;
+                    if (pair.Length == 2)
+                    {
+                        ushort.TryParse(pair[0], NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture, out vid);
+                        ushort.TryParse(pair[1], NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture, out pid);
+                    }
                     reading = new BatteryReading
                     {
                         Name = obj.Name, Status = obj.Status, Percent = obj.Percent,
-                        Charging = obj.Charging
+                        Charging = obj.Charging, Vid = vid, Pid = pid
                     };
                     return true;
                 }
