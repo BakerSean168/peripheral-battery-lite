@@ -107,7 +107,7 @@ namespace PeripheralBatteryLite
             panel.SetFooter(automatic ? "后台更新符合条件的活跃设备..." : "正在查询外设...");
             ThreadPool.QueueUserWorkItem(o =>
             {
-                List<BatteryReading> fresh = BatteryCoordinator.Query(scheduled);
+                List<BatteryReading> fresh = IsolatedQueryHost.Query(scheduled);
                 try
                 {
                     if (closing || !panel.IsHandleCreated)

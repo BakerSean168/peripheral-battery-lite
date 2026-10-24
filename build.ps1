@@ -14,6 +14,7 @@ $relativeSources = @(
     'Core\AppPreferences.cs',
     'Core\RefreshPolicy.cs',
     'Core\BatteryCoordinator.cs',
+    'Core\IsolatedQueryHost.cs',
     'Providers\IBatteryProvider.cs',
     'Platform\RawInputActivityTracker.cs',
     'Platform\StartupRegistration.cs',

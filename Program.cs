@@ -16,7 +16,7 @@ namespace PeripheralBatteryLite
         {
             try
             {
-                if (args.Length > 0) { RunCommand(args[0]); return; }
+                if (args.Length > 0) { RunCommand(args); return; }
                 bool acquired;
                 using (var lockInstance = new Mutex(true,
                     @"Local\PeripheralBatteryLite-9E1C819F", out acquired))
@@ -34,8 +34,9 @@ namespace PeripheralBatteryLite
             }
         }
 
-        private static void RunCommand(string arg)
+        private static void RunCommand(string[] args)
         {
+            string arg = args[0];
             if (arg == "--self-test")
             {
                 bool protocol = BatteryProtocols.SelfTest();
@@ -43,12 +44,14 @@ namespace PeripheralBatteryLite
                 bool policy = RefreshPolicy.SelfTest();
                 bool settings = AppPreferencesStore.SelfTest();
                 bool cache = BatterySnapshotStore.SelfTest();
+                bool isolated = IsolatedQueryHost.SelfTest();
                 Console.WriteLine("Protocol parsers: " + (protocol ? "PASS" : "FAIL"));
                 Console.WriteLine("Provider registry: " + (registry ? "PASS" : "FAIL"));
                 Console.WriteLine("Refresh policy: " + (policy ? "PASS" : "FAIL"));
                 Console.WriteLine("Settings persistence: " + (settings ? "PASS" : "FAIL"));
                 Console.WriteLine("Battery cache persistence: " + (cache ? "PASS" : "FAIL"));
-                Environment.ExitCode = protocol && registry && policy && settings && cache ? 0 : 1;
+                Console.WriteLine("Isolated HID response transport: " + (isolated ? "PASS" : "FAIL"));
+                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated ? 0 : 1;
                 return;
             }
             if (arg == "--render-preview")
@@ -99,6 +102,20 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("startup=" + StartupRegistration.Enabled);
                 return;
             }
+            if (arg == "--provider-query" && args.Length > 1)
+            {
+                // Internal child-process entry point, invoked only by the
+                // supervising UI. This is the sole path that directly touches
+                // the HID driver; the parent enforces a hard timeout.
+                var providers = ProviderRegistry.Load(
+                    new AppPreferencesStore().Load().EnableExternalPlugins);
+                var selected = providers.FirstOrDefault(p => p.Id == args[1]);
+                if (selected == null) { Environment.ExitCode = 2; return; }
+                var values = BatteryCoordinator.Query(new List<IBatteryProvider> { selected });
+                Console.WriteLine(values[0].Json);
+                Environment.ExitCode = values[0].Status == "OK" ? 0 : 2;
+                return;
+            }
             if (arg == "--probe")
             {
                 Console.WriteLine(BatteryProtocols.Probe());
@@ -115,7 +132,7 @@ namespace PeripheralBatteryLite
                     p = p.Where(x => x.Id == BatterySnapshotStore.Keyboard).ToList();
                 else if (arg == "--headset-only")
                     p = p.Where(x => x.Id == BatterySnapshotStore.Headset).ToList();
-                var readings = BatteryCoordinator.Query(p);
+                var readings = IsolatedQueryHost.Query(p);
                 if (arg == "--refresh-cache")
                 {
                     var store = new BatterySnapshotStore();
