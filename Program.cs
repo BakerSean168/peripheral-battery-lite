@@ -66,6 +66,41 @@ namespace PeripheralBatteryLite
                 Environment.ExitCode = good ? 0 : 1;
                 return;
             }
+            if (arg == "--activity-probe")
+            {
+                Application.EnableVisualStyles();
+                using (var panel = new BatteryPanel())
+                using (var activity = new RawInputActivityTracker())
+                {
+                    bool ok = activity.Register(panel.Handle);
+                    Console.WriteLine(ok ? "RAW_INPUT_REGISTRATION=OK" :
+                        "RAW_INPUT_REGISTRATION=UNAVAILABLE");
+                    Environment.ExitCode = ok ? 0 : 2;
+                }
+                return;
+            }
+            if (arg == "--render-settings")
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                using (var settings = new SettingsForm(new AppPreferences(),
+                    false, 3, true))
+                {
+                    settings.Show();
+                    Application.DoEvents();
+                    using (var bitmap = new Bitmap(settings.Width, settings.Height))
+                    {
+                        settings.DrawToBitmap(bitmap,
+                            new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                        string location = Path.Combine(Path.GetTempPath(),
+                            "PeripheralBatteryLite-settings-preview.png");
+                        bitmap.Save(location, ImageFormat.Png);
+                        Console.WriteLine("PREVIEW=" + location);
+                    }
+                    settings.Hide();
+                }
+                return;
+            }
             if (arg == "--render-preview")
             {
                 Application.EnableVisualStyles();
