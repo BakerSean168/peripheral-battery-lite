@@ -60,6 +60,8 @@ namespace PeripheralBatteryLite
                 using (var panel = new BatteryPanel())
                 {
                     panel.UpdateData(cached, providers, new AppPreferencesStore().Load());
+                    panel.Show();
+                    Application.DoEvents();
                     using (var bitmap = new Bitmap(panel.Width, panel.Height))
                     {
                         panel.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
@@ -67,6 +69,7 @@ namespace PeripheralBatteryLite
                         bitmap.Save(location, ImageFormat.Png);
                         Console.WriteLine("PREVIEW=" + location);
                     }
+                    panel.Hide();
                 }
                 return;
             }
