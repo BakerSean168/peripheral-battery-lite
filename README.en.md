@@ -19,11 +19,11 @@
 ## Features
 
 - **Native WinForms tray and floating dashboard:** battery percentages, bars and last successful query timestamps.
-- **Manual refresh by default:** launch and displaying cached values do not query the HID device.
+- **Manual refresh by default:** startup and cache display do not query HID; in manual mode the application does not register for Raw Input mouse/keyboard events.
 - **Optional auto refresh:** off, every 30 minutes, 1 hour, 2 hours or 5 hours.
 - **Optional activity-only refresh:** passive Windows Raw Input device headers identify recent use of supported mice and keyboards, without logging typed characters. There is no reliable passive headset awake signal: audio providers remain manual-only when activity-only is on.
-- **Bounded per-device query processes:** a stalled HID driver cannot indefinitely block the tray UI.
-- **Local cache:** preserve the most recent successful battery value and timestamp when a device read fails.
+- **Concurrent per-device query processes:** up to three isolated HID readers run in parallel, with each completed device card updated immediately. A stalled device does not block the others.
+- **Local cache:** preserve the last successful battery value and its timestamp, alongside the most recent failure time. Unchanged percentages reuse the existing tray icon.
 - **Opt-in Windows login startup** using the current user's Run key.
 - **Extensible protocol providers:** three built-in `IBatteryProvider` implementations, plus optional compiled .NET Framework DLL providers. Third-party DLLs are disabled by default and **are not sandboxed**.
 

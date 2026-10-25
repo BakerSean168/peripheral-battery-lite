@@ -26,11 +26,11 @@ Platform/StartupRegistration.cs     Windows CurrentUser Run key
 ## Battery query lifecycle
 
 1. When opening the tray, read local JSON cache only.
-2. Query when the user explicitly chooses refresh, or when a configured interval is due *and* an eligible device is active (if activity gating is enabled).
-3. Select providers and start a **separate child process per selected provider**; bound each query with a deadline. A stuck device does not block the tray indefinitely.
+2. Query when the user explicitly chooses refresh, or when a configured interval is due *and* an eligible device is active (if activity gating is enabled). Raw Input is **not registered in manual mode**, nor if activity gating is disabled. Changing these settings registers/unregisters the listener without restarting.
+3. Select providers and start up to **three concurrent child processes**, one per selected provider, each with its own deadline. Each completed result is applied to the UI and portable JSON cache immediately; a stuck device does not hold up the other cards.
 4. Use the shared `IBatteryProvider` registry in each child. Discover the HID collection, issue only its known battery/status read, validate the result.
 5. Merge success and failures per provider. A failure does not overwrite the last good battery percentage or last successful timestamp. Record the latest attempt independently.
-6. Display snapshots with their timestamps; do not misrepresent stale values as live.
+6. Display snapshots with their **last successful time** and, if the latest attempt failed, the **failure time**; do not misrepresent stale values as live. Reuse the tray icon whenever its displayed battery percentage remains unchanged.
 
 ## Plugin ABI
 

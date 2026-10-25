@@ -21,6 +21,8 @@ namespace PeripheralBatteryLite
         private readonly ToolStripMenuItem pinnedMenu;
         private AppPreferences prefs;
         private Icon currentIcon;
+        private string lastIconValue = "--";
+        private string lastTooltip = "";
         private int isRefreshing;
         private bool closing;
         private bool settingsOpen;
@@ -38,8 +40,13 @@ namespace PeripheralBatteryLite
             panel.RawInputReceived += activity.ProcessMessage;
             panel.RefreshRequested += (s, e) => Refresh(false, providers);
             panel.SettingsRequested += (s, e) => ShowSettings();
+            // Manual-only mode is passive: do not subscribe to OS input.
+            // An activity observer is only needed for gated auto polling.
+            // Keep a hidden WinForms handle for tray-menu refresh callbacks.
+            // Creating the handle is not an OS Raw Input registration.
             var windowHandle = panel.Handle;
-            activity.Register(windowHandle);
+            if (RefreshPolicy.RequiresActivityTracking(prefs))
+                activity.Register(windowHandle);
 
             var menu = new ContextMenuStrip();
             menu.Items.Add("打开电量面板", null, (s, e) => ShowPanel());
@@ -103,35 +110,63 @@ namespace PeripheralBatteryLite
             if (closing || selected == null || selected.Count == 0 ||
                 Interlocked.CompareExchange(ref isRefreshing, 1, 0) != 0) return;
             var scheduled = selected.ToList();
-            if (!automatic) panel.SetLoading(true);
-            panel.SetFooter(automatic ? "后台更新符合条件的活跃设备..." : "正在查询外设...");
+            panel.SetLoading(true); // Do not silently ignore manual clicks during an automatic read.
+            panel.SetFooter(automatic ? "正在更新活跃设备..." : "正在并行查询外设...");
+            int completed = 0; // Only changed on the UI thread.
+            bool saveFailed = false;
             ThreadPool.QueueUserWorkItem(o =>
             {
-                List<BatteryReading> fresh = IsolatedQueryHost.Query(scheduled);
+                Exception failure = null;
                 try
                 {
-                    if (closing || !panel.IsHandleCreated)
-                    {
-                        Interlocked.Exchange(ref isRefreshing, 0);
-                        return;
-                    }
-                    panel.BeginInvoke((Action)(() =>
+                    // Every finished device is posted independently to the
+                    // WinForms thread. The slowest one cannot delay the other cards.
+                    IsolatedQueryHost.QueryParallel(scheduled, (index, reading) =>
                     {
                         try
                         {
-                            if (closing) return;
-                            cache.MergeAndSave(fresh);
-                            DisplayCache();
-                            panel.SetFooter(cache.LastSaveError == null ? "" : "缓存保存失败，请检查磁盘权限");
+                            if (closing || !panel.IsHandleCreated) return;
+                            panel.BeginInvoke((Action)(() =>
+                            {
+                                if (closing) return;
+                                cache.MergeAndSave(new[] { reading });
+                                if (cache.LastSaveError != null) saveFailed = true;
+                                DisplayCache();
+                                completed++;
+                                if (completed < scheduled.Count)
+                                    panel.SetFooter("已完成 " + completed + "/" + scheduled.Count + " 台设备...");
+                            }));
                         }
-                        finally
-                        {
-                            panel.SetLoading(false);
-                            Interlocked.Exchange(ref isRefreshing, 0);
-                        }
-                    }));
+                        catch (InvalidOperationException) { /* Closing window. */ }
+                        catch (ObjectDisposedException) { /* Closing window. */ }
+                    });
                 }
-                catch (Exception) { Interlocked.Exchange(ref isRefreshing, 0); }
+                catch (Exception e) { failure = e; }
+                finally
+                {
+                    try
+                    {
+                        if (!closing && panel.IsHandleCreated)
+                            panel.BeginInvoke((Action)(() =>
+                            {
+                                try
+                                {
+                                    if (closing) return;
+                                    panel.SetFooter(saveFailed ? "缓存保存失败，请检查磁盘权限" :
+                                        failure != null ? "查询异常：" + failure.GetType().Name : "");
+                                }
+                                finally
+                                {
+                                    panel.SetLoading(false);
+                                    Interlocked.Exchange(ref isRefreshing, 0);
+                                }
+                            }));
+                        else
+                            Interlocked.Exchange(ref isRefreshing, 0);
+                    }
+                    catch (InvalidOperationException) { Interlocked.Exchange(ref isRefreshing, 0); }
+                    catch (ObjectDisposedException) { Interlocked.Exchange(ref isRefreshing, 0); }
+                }
             });
         }
 
@@ -141,15 +176,26 @@ namespace PeripheralBatteryLite
             panel.UpdateData(snapshots, providers, prefs);
             var mouse = snapshots.FirstOrDefault(r => r.Name == BatterySnapshotStore.Mouse);
             string number = mouse != null && mouse.Percent.HasValue ? mouse.Percent.Value.ToString() : "--";
-            Icon next = CreateIcon(number);
-            tray.Icon = next;
-            if (currentIcon != null) currentIcon.Dispose();
-            currentIcon = next;
+            // Generating Win32 HICONs allocates native GDI resources. Only
+            // replace the icon if its displayed percentage actually changes.
+            if (number != lastIconValue)
+            {
+                Icon next = CreateIcon(number);
+                tray.Icon = next;
+                if (currentIcon != null) currentIcon.Dispose();
+                currentIcon = next;
+                lastIconValue = number;
+            }
             string mouseLabel = Value(snapshots, BatterySnapshotStore.Mouse);
             string keyboard = Value(snapshots, BatterySnapshotStore.Keyboard);
             string headset = Value(snapshots, BatterySnapshotStore.Headset);
             string tooltip = "F1V3 " + mouseLabel + " | V87 " + keyboard + " | Nova5 " + headset;
-            tray.Text = tooltip.Length > 63 ? tooltip.Substring(0, 63) : tooltip;
+            tooltip = tooltip.Length > 63 ? tooltip.Substring(0, 63) : tooltip;
+            if (tooltip != lastTooltip)
+            {
+                tray.Text = tooltip;
+                lastTooltip = tooltip;
+            }
         }
 
         private static string Value(List<BatteryReading> values, string name)
@@ -177,6 +223,13 @@ namespace PeripheralBatteryLite
                         return;
                     }
                     prefs = next;
+                    bool shouldTrack = RefreshPolicy.RequiresActivityTracking(prefs);
+                    if (shouldTrack && !activity.IsRegistered && !activity.Register(panel.Handle))
+                        MessageBox.Show("无法启用键鼠活动监听。启用活动限制时，自动查询将被跳过；仍可以手动刷新。",
+                            "设备活动监听不可用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    else if (!shouldTrack && activity.IsRegistered && !activity.Unregister())
+                        MessageBox.Show("无法注销键鼠活动监听，请重新启动程序。",
+                            "设备活动监听", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     panel.Pinned = prefs.PinPanel;
                     updatingMenus = true;
                     try { pinnedMenu.Checked = prefs.PinPanel; }

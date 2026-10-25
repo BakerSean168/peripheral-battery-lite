@@ -46,6 +46,7 @@ namespace PeripheralBatteryLite
                 bool cache = BatterySnapshotStore.SelfTest();
                 bool isolated = IsolatedQueryHost.SelfTest();
                 bool storage = AppDataPaths.SelfTest();
+                bool staleUi = BatteryPanel.SelfTest();
                 Console.WriteLine("Protocol parsers: " + (protocol ? "PASS" : "FAIL"));
                 Console.WriteLine("Provider registry: " + (registry ? "PASS" : "FAIL"));
                 Console.WriteLine("Refresh policy: " + (policy ? "PASS" : "FAIL"));
@@ -53,7 +54,8 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("Battery cache persistence: " + (cache ? "PASS" : "FAIL"));
                 Console.WriteLine("Isolated HID response transport: " + (isolated ? "PASS" : "FAIL"));
                 Console.WriteLine("Portable storage path resolution: " + (storage ? "PASS" : "FAIL"));
-                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated && storage ? 0 : 1;
+                Console.WriteLine("Stale cache/failure UI status: " + (staleUi ? "PASS" : "FAIL"));
+                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated && storage && staleUi ? 0 : 1;
                 return;
             }
             if (arg == "--plugin-self-test")
@@ -74,9 +76,14 @@ namespace PeripheralBatteryLite
                 using (var panel = new BatteryPanel())
                 using (var activity = new RawInputActivityTracker())
                 {
-                    bool ok = activity.Register(panel.Handle);
-                    Console.WriteLine(ok ? "RAW_INPUT_REGISTRATION=OK" :
-                        "RAW_INPUT_REGISTRATION=UNAVAILABLE");
+                    bool initiallyUnregistered = !activity.IsRegistered;
+                    bool registered = activity.Register(panel.Handle);
+                    bool disabled = activity.Unregister() && !activity.IsRegistered;
+                    bool reenabled = activity.Register(panel.Handle) && activity.IsRegistered;
+                    bool stopped = activity.Unregister() && !activity.IsRegistered;
+                    bool ok = initiallyUnregistered && registered && disabled && reenabled && stopped;
+                    Console.WriteLine(ok ? "RAW_INPUT_TOGGLE=PASS" :
+                        "RAW_INPUT_TOGGLE=FAIL");
                     Environment.ExitCode = ok ? 0 : 2;
                 }
                 return;

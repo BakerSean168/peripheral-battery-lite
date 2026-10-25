@@ -170,17 +170,16 @@ namespace PeripheralBatteryLite
             UiTheme.TextAt(g, level, 16f, true, levelColor,
                 new RectangleF(area.Right - 113, area.Y + 8, 97, 33),
                 ContentAlignment.MiddleRight);
-            string description = "尚未查询 · 点击刷新";
-            if (reading != null && reading.LastQueryUtc.HasValue)
-            {
-                if (reading.Status == "Previous query failed")
-                    description = "最近查询失败 · 保留上次记录";
-                else if (reading.LastSuccessUtc.HasValue)
-                    description = "上次 " + reading.LastSuccessUtc.Value.ToLocalTime().ToString("MM-dd HH:mm:ss");
-                else description = "上次查询失败 · 无有效电量";
-            }
-            UiTheme.TextAt(g, description, 7.5f, false, UiTheme.Secondary,
-                new RectangleF(area.X + 52, area.Y + 31, area.Width - 71, 23),
+            // Success and failure timestamps are independent. A failed read
+            // must never hide the timestamp behind the cached percentage.
+            string[] lines = DescribeReading(reading);
+            UiTheme.TextAt(g, lines[0], 7.5f, false, UiTheme.Secondary,
+                new RectangleF(area.X + 52, area.Y + 32, area.Width - 71, 16),
+                ContentAlignment.MiddleLeft);
+            UiTheme.TextAt(g, lines[1], 7.5f, false,
+                reading != null && reading.Status == "Previous query failed"
+                    ? UiTheme.Warning : UiTheme.Secondary,
+                new RectangleF(area.X + 52, area.Y + 48, area.Width - 71, 16),
                 ContentAlignment.MiddleLeft);
 
             var track = new Rectangle(area.X + 13, area.Bottom - 13, area.Width - 26, 5);
@@ -191,6 +190,56 @@ namespace PeripheralBatteryLite
                     Math.Max(3, track.Width * percent / 100), track.Height);
                 UiTheme.FillRound(g, levelColor, fill, 2);
             }
+        }
+
+        // Pure formatter makes UI stale/failure behavior testable without a
+        // display, hardware, or touching the user's battery cache.
+        internal static string[] DescribeReading(BatteryReading reading)
+        {
+            if (reading == null || !reading.LastQueryUtc.HasValue)
+                return new[] { "尚未查询 · 点击刷新", "本地缓存 · 不触发设备查询" };
+
+            string attempted = reading.LastQueryUtc.Value.ToLocalTime().ToString("MM-dd HH:mm");
+            if (reading.Status == "Previous query failed")
+            {
+                if (reading.LastSuccessUtc.HasValue)
+                    return new[] {
+                        "上次成功 " + reading.LastSuccessUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"),
+                        "最近失败 " + attempted + " · 沿用旧值"
+                    };
+                return new[] { "最近查询 " + attempted, "查询失败 · 暂无有效电量" };
+            }
+
+            if (reading.LastSuccessUtc.HasValue)
+                return new[] {
+                    "上次成功 " + reading.LastSuccessUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"),
+                    reading.Charging == true ? "充电中 · 已缓存" : "缓存电量 · 非实时值"
+                };
+            return new[] { "最近查询 " + attempted, "尚无有效电量" };
+        }
+
+        internal static bool SelfTest()
+        {
+            DateTime success = new DateTime(2026, 10, 24, 11, 0, 0, DateTimeKind.Utc);
+            DateTime failed = success.AddHours(2);
+            string expectedSuccess = success.ToLocalTime().ToString("MM-dd HH:mm");
+            string expectedFailure = failed.ToLocalTime().ToString("MM-dd HH:mm");
+            var oldReading = new BatteryReading {
+                Percent = 85, LastSuccessUtc = success, LastQueryUtc = failed,
+                Status = "Previous query failed"
+            };
+            string[] stale = DescribeReading(oldReading);
+            string[] fresh = DescribeReading(new BatteryReading {
+                Percent = 85, LastSuccessUtc = success, LastQueryUtc = success,
+                Status = "Cached"
+            });
+            string[] empty = DescribeReading(null);
+            return stale[0].Contains(expectedSuccess) &&
+                   stale[1].Contains(expectedFailure) &&
+                   stale[1].Contains("失败") &&
+                   fresh[0].Contains(expectedSuccess) &&
+                   fresh[1].Contains("缓存") &&
+                   empty[0].Contains("尚未查询");
         }
 
         private void OnDrag(object sender, MouseEventArgs e)
