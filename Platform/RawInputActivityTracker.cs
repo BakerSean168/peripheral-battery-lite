@@ -59,6 +59,8 @@ namespace PeripheralBatteryLite
 
         public bool Register(IntPtr hwnd)
         {
+            if (registered) return true;
+            if (hwnd == IntPtr.Zero) return false;
             var devices = new[]
             {
                 new RAWINPUTDEVICE { usUsagePage = 1, usUsage = 2,
@@ -114,9 +116,17 @@ namespace PeripheralBatteryLite
             return value.HasValue && nowUtc - value.Value < TimeSpan.FromMinutes(3);
         }
 
-        public void Dispose()
+        // Turning off automatic polling must also turn off OS-wide Raw Input.
+        // Reset remembered activity so re-enabling does not reuse stale events.
+        public bool Unregister()
         {
-            if (!registered) return;
+            if (!registered)
+            {
+                kindByHandle.Clear();
+                lastKeyboardUtc = null;
+                lastMouseUtc = null;
+                return true;
+            }
             var devices = new[]
             {
                 new RAWINPUTDEVICE { usUsagePage = 1, usUsage = 2,
@@ -124,9 +134,18 @@ namespace PeripheralBatteryLite
                 new RAWINPUTDEVICE { usUsagePage = 1, usUsage = 6,
                     dwFlags = RIDEV_REMOVE, hwndTarget = IntPtr.Zero }
             };
-            RegisterRawInputDevices(devices, (uint)devices.Length,
+            bool success = RegisterRawInputDevices(devices, (uint)devices.Length,
                 (uint)Marshal.SizeOf(typeof(RAWINPUTDEVICE)));
-            registered = false;
+            if (success)
+            {
+                registered = false;
+                kindByHandle.Clear();
+                lastKeyboardUtc = null;
+                lastMouseUtc = null;
+            }
+            return success;
         }
+
+        public void Dispose() { Unregister(); }
     }
 }
