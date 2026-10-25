@@ -43,8 +43,7 @@ namespace PeripheralBatteryLite
 
         public BatterySnapshotStore(string path = null)
         {
-            cachePath = path ?? Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.LocalApplicationData), "PeripheralBatteryLite", "battery-cache.json");
+            cachePath = path ?? AppDataPaths.CachePath;
             state = Read(cachePath);
             state.Devices.RemoveAll(d => d == null || string.IsNullOrWhiteSpace(d.DeviceId) || d.DeviceId.Length > 128);
             // Preserve extension provider cache entries, even when a plugin is disabled.

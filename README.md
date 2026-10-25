@@ -20,9 +20,11 @@ connected hardware in Windows 11.
   Chromium, Node.js background server, account login or internet traffic.
 - Compact dark floating battery dashboard with battery bars, last-query
   timestamps, a tray percentage icon, manual refresh and a settings dialog.
-- Saves successful readings and timestamps under
-  `%LOCALAPPDATA%\PeripheralBatteryLite\battery-cache.json`.
-  Query failures retain the last successful reading.
+- Portable mode is enabled when `portable.flag` exists next to the EXE. Battery
+  readings (`battery-cache.json`) and preferences (`settings.json`) are stored
+  **in that same directory**; moving the directory keeps the app and data together.
+  If the marker is absent, legacy storage in `%LOCALAPPDATA%\PeripheralBatteryLite`
+  is retained for backwards compatibility. Query failures preserve past readings.
 - Automatic polling is **OFF by default**. Optional intervals: 30 minutes,
   1 hour, 2 hours, 5 hours. A 30-second local timer checks only whether a
   query is due; it doesn't contact HID endpoints when none is due.
@@ -47,6 +49,12 @@ startup preference, pin behavior and optional external plugins.
 
 If the app runs but its icon is hidden, expand the Windows system tray with
 `^`.
+
+Recommended portable installation on this workstation: `D:\opt\PeripheralBatteryLite`.
+Keep `portable.flag`, the two EXEs, and the Contracts DLL together. The `settings.json`
+and `battery-cache.json` files belong in the same directory. See
+[portable migration instructions](docs/PORTABLE.md). Windows startup settings
+are stored in Windows' Run registry key by design, and point to the current EXE.
 
 To prevent queries from waking a sleeping wireless keyboard, retain the
 default manual-refresh-only mode, or enable activity-only automatic refresh.
@@ -81,7 +89,7 @@ parser, registry, scheduling, settings and cache tests on each push/PR.
 
 - `--self-test`: protocol parsers, registry, scheduler, persistence tests
 - `--scheduler-self-test`, `--cache-self-test`: isolated tests
-- `--cache-show`, `--settings-show`: read local state only
+- `--cache-show`, `--settings-show`, `--storage-paths`: read local state only
 - `--probe`: enumerate supported HID descriptors (read-only)
 - `--once`: query each connected device without touching cache
 - `--refresh-cache`: query and persist battery values

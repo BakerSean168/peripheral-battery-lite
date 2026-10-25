@@ -1,0 +1,9 @@
+Peripheral Battery Lite portable mode
+
+This marker is intentional. When it exists beside PeripheralBatteryLite.exe
+and PeripheralBatteryLite.Probe.exe, the application reads and writes
+settings.json and battery-cache.json in the same folder.
+
+Remove this marker only if you intentionally want to use the older
+%LOCALAPPDATA%\PeripheralBatteryLite path. Do not move or delete
+existing JSON files without making a backup.
