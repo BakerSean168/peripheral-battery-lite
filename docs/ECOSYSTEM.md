@@ -30,7 +30,7 @@ It provides a full host:
 - Native providers for Bluetooth, AirPods, Xiaomi buds, gamepads, Logitech, Razer, VGN-family peripherals, plus history/notifications/WebSocket.
 - An MIT license.
 
-**Current compatibility gap for our exact three devices:** BatteryMonitor documents verified ATK V75X and a VGN-family 2.4G receiver, but does **not** list our precise combination (ATK F1V3 + VXE V87 + SteelSeries Nova 5) as verified. Its JS HID plugin API is a plausible way to port these queries, but success needs real-device testing. Its default JS `device.read` timeout is capped at 500 ms per call; retry design should be tested against our occasional slow ATK replies. We have **not benchmarked its runtime memory use** against our WinForms application.
+**Current compatibility gap for our exact three devices:** BatteryMonitor documents verified ATK V75X and a VGN-family 2.4G receiver, but does **not** list our precise combination (ATK F1V3 + VXE V87 + SteelSeries Nova 5) as verified. Its JS HID plugin API is a plausible way to port these queries, but success needs real-device testing. Its default JS `device.read` timeout is capped at 500 ms per call; retry design should be tested against our occasional slow ATK replies. We **have now measured** its short-run memory and CPU footprint alongside our WinForms app on one Windows 11 machine. See the methodology, results and optimization audit in [PERFORMANCE.md](PERFORMANCE.md): at ~60 seconds BatteryMonitor used 74.1 MiB resident working set versus Peripheral Battery Lite 44.6 MiB, while private committed bytes were 26.4 MiB versus 31.6 MiB. These are different workloads and not matched-feature framework benchmarks.
 
 ### Why we originally built Peripheral Battery Lite
 
@@ -46,7 +46,7 @@ The initial architecture survey was **incomplete**: it did not adequately accoun
 
 ### Evidence needed before any migration
 
-1. Install a clean BatteryMonitor build, measure idle memory/CPU (same Windows machine, same conditions) and compare with our application.
+1. **Initial short benchmark completed:** see [PERFORMANCE.md](PERFORMANCE.md). Repeat controlled multi-run CPU/working-set, power/energy and hardware-awake measurements before making a deployment decision.
 2. Port the three battery reads into JS prototypes, including report ID handling, signature validation and timeouts.
 3. Verify battery levels on the actual F1V3, V87 and Nova 5 dongles—not merely matching USB IDs.
 4. Check whether it can provide **manual-only mode**, *no startup reads*, portable same-folder settings, and sleep-friendly refresh without regression.
