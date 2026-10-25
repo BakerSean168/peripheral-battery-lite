@@ -1,0 +1,14 @@
+apiVersion: pds/v1alpha1
+kind: Component
+metadata:
+  id: peripheral-battery-lite
+  name: Peripheral Battery Lite
+spec:
+  type: windows-peripheral-battery-utility
+  domain: products
+  lifecycle: active
+  repository:
+    url: https://github.com/BakerSean168/peripheral-battery-lite.git
+    visibility: public
+  provides:
+    - pds://products/app/peripheral-battery-lite
