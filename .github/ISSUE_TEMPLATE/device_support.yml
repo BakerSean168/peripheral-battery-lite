@@ -1,0 +1,48 @@
+name: Device support request
+description: Request a new battery protocol, with explicit compatibility evidence.
+title: "[Device] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A VID/PID match alone does not confirm battery protocol compatibility.
+        Please remove personal device serials and unique HID paths.
+  - type: input
+    id: model
+    attributes:
+      label: Exact brand and model
+      placeholder: "e.g. XYZ Mouse Pro"
+    validations:
+      required: true
+  - type: input
+    id: connection
+    attributes:
+      label: Connection type
+      placeholder: "2.4G USB dongle / USB cable / BLE"
+    validations:
+      required: true
+  - type: input
+    id: usb
+    attributes:
+      label: USB VID:PID (and usage page if known)
+      placeholder: "VID 1234, PID 5678, usage page FF00"
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Existing behavior / observed battery readings
+      description: Include whether the wireless device was awake and whether an official app reads its battery.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Protocol reference or read-only capture
+      description: Do not include device serials, passwords or guessed firmware commands.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed serial numbers, unique HID paths and other private data from my report.
+          required: true

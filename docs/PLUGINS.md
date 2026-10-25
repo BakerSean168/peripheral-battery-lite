@@ -1,45 +1,81 @@
-# Battery protocol providers
+# Writing battery protocol providers
 
-Peripheral Battery Lite uses compile-time built-in providers and optional
-user-installed .NET Framework DLL providers. The stable protocol boundary
-is `IBatteryProvider` in `Providers/IBatteryProvider.cs`.
+[中文 README](../README.md) · [English README](../README.en.md) · [Architecture](ARCHITECTURE.md)
 
-A provider has `Id`, `DisplayName`, `ShortName`, `SortOrder`,
-`Activity` and `Query(List<HidEndpoint>)`. Battery data is returned
-as `BatteryReading`; `Status="OK"` and `Percent=0..100` denote a valid
-response, while exceptions or absent hardware must return a non-OK status.
-The `Id` is used as the persistent cache key and should never be renamed.
+Peripheral Battery Lite has three built-in providers and supports user-installed,
+compiled **.NET Framework DLL providers**.
 
-The built-ins are registered via reflection within the application assembly:
+The shared ABI lives in `Contracts/IBatteryProvider.cs` and is distributed as
+`PeripheralBatteryLite.Contracts.dll`. The host and the diagnostic child process
+use the same contract assembly.
 
-- `AtkF1V3Provider` — Nordic/Compx 17-byte USB HID battery report
-- `VxeV87Provider` — Weisheng 64-byte status report (2.4G)
-- `SteelSeriesNova5Provider` — SteelSeries 65-byte USB HID battery report
+## Built-in implementations
 
-## Adding a provider
+| C# type | Device | Protocol |
+| --- | --- | --- |
+| `AtkF1V3Provider` | ATK F1V3 | 17-byte Nordic/Compx report |
+| `VxeV87Provider` | VXE V87 | 64-byte battery/status HID report |
+| `SteelSeriesNova5Provider` | Nova 5 | 65-byte SteelSeries report |
 
-Implement the public `IBatteryProvider` type and provide a public parameterless
-constructor. Compile with .NET Framework 4.8, referencing the shared
-`PeripheralBatteryLite.Contracts.dll` assembly. The public types are shared
-between the tray and diagnostic EXEs. A sample implementation lives in
-`tests/SamplePlugin.cs`. Distribute the Contracts DLL with both EXEs.
+The core uses `ProviderRegistry` to locate `IBatteryProvider` implementations. Each provider declares a stable `Id`, a name, sort order and `ActivityCategory`, then implements `Query(List<HidEndpoint> interfaces)`. **Do not change the stable ID** after users have saved battery caches.
 
-Place the built DLL in the `Plugins` folder next to the exe, then enable
-"允许加载 Plugins 目录内的第三方 DLL" in Settings and restart.
+## Implement a plugin
 
-**Safety:** DLLs are loaded in-process with the user's full OS permissions.
-They are *not sandboxed*. Only enable trusted source-reviewed plugins. The
-option is OFF by default. The app does not retrieve plugins from a network
-or automatically install them.
+Create a public class with a **public parameterless constructor** implementing
+`IBatteryProvider`. A minimal safe example is
+[`tests/SamplePlugin.cs`](../tests/SamplePlugin.cs).
 
-## Activity rules
+To compile the sample on Windows PowerShell (with the .NET Framework compiler),
+in the repository root:
 
-A provider must classify itself with the appropriate `ActivityCategory`.
-The optional "only when active" auto-poll gate uses Windows Raw Input events,
-matched by the known mouse/keyboard receiver IDs. A headset dongle remaining
-attached is *not* evidence the headset is awake; built-in audio providers are
-intentionally excluded from background polling when active-only is enabled.
-Unchecking this option enables scheduled queries for every provider.
+```powershell
+.\build.ps1
 
-This is a best-effort power-saving heuristic, not a verified physical
-sleep-state detector. Manual refresh bypasses the gate.
+New-Item -ItemType Directory -Force .\dist\Plugins | Out-Null
+$compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+& $compiler /nologo /target:library `
+  '/out:dist\Plugins\SamplePlugin.dll' `
+  '/r:dist\PeripheralBatteryLite.Contracts.dll' `
+  .\tests\SamplePlugin.cs
+```
+
+Place the built DLL in the `Plugins` directory **next to the EXEs and Contracts DLL**. Open the app's settings and enable external plugins. Restart for plugin discovery.
+
+By default external plugin loading is disabled. The app never downloads or installs third-party plugins automatically.
+
+## Query contract
+
+- `Status = "OK"` plus `Percent` between `0..100` means a valid reading.
+- Return a non-OK status for sleeping, missing, unsupported or unavailable devices.
+- `Charging` is optional; set it only when the device actually reports the state.
+- Match VID/PID **and** usage page/report lengths. VID/PID alone may identify unrelated devices.
+- Validate report signature, command echo, checksum and bounds before accepting a battery value.
+- Use documented read-only battery/status commands; **do not guess** firmware, pairing or configuration writes.
+- Unrecognized/slow HID responses must have bounded timeouts. Do not spin or keep idle devices awake.
+- Cache queries happen in a separate diagnostic process to avoid indefinite GUI stalls.
+
+## Important limits
+
+**Native DLLs are not sandboxed.** They execute with the Windows user's permissions and
+may access files, network resources or processes. Unlike a QuickJS plugin, they are not a
+safe way to run untrusted community code. Only enable trusted, reviewed DLLs.
+
+Activity gating currently tracks known mouse/keyboard receiver IDs through Windows Raw
+Input events. A brand-new external provider is **not automatically included in the host's
+activity-source recognition**. With activity-only polling enabled, it may remain manual-only;
+a future revision would need an explicit per-provider activity matching API.
+
+For a user-friendly sandboxed HID scripting platform, evaluate the
+[QuickJS host in JKWTCN/BatteryMonitor](https://github.com/JKWTCN/BatteryMonitor/blob/master/docs/js-plugin-en.md)
+rather than assuming this DLL loader provides equivalent isolation.
+
+## Tests
+
+Run `PeripheralBatteryLite.Probe.exe --self-test` to validate built-in parsers,
+refresh policy and persistent storage.
+
+The Windows CI workflow also compiles the sample plugin against Contracts and checks
+that the host discovers it from the local `Plugins` directory.
+
+Remember that CI **does not own physical USB receivers**. A new protocol is not considered
+real-device verified until its battery query is tested on actual hardware.
