@@ -24,6 +24,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\PeripheralBatteryLite.Probe.exe --cache-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $paths = & .\dist\PeripheralBatteryLite.Probe.exe --storage-paths
+          if ($LASTEXITCODE -ne 0 -or $paths -notcontains 'MODE=PORTABLE') { throw 'Portable storage marker was not recognized' }
+          if ($paths -notcontains ('CACHE_PATH=' + (Join-Path (Resolve-Path .\dist).Path 'battery-cache.json'))) { throw 'Portable cache path mismatch' }
       - name: Verify external plugin ABI against shared Contracts DLL
         shell: pwsh
         run: |
@@ -42,5 +45,7 @@ jobs:
             dist/PeripheralBatteryLite.exe
             dist/PeripheralBatteryLite.Probe.exe
             dist/PeripheralBatteryLite.Contracts.dll
+            dist/portable.flag
             README.md
+            docs/PORTABLE.md
           if-no-files-found: error

@@ -45,13 +45,15 @@ namespace PeripheralBatteryLite
                 bool settings = AppPreferencesStore.SelfTest();
                 bool cache = BatterySnapshotStore.SelfTest();
                 bool isolated = IsolatedQueryHost.SelfTest();
+                bool storage = AppDataPaths.SelfTest();
                 Console.WriteLine("Protocol parsers: " + (protocol ? "PASS" : "FAIL"));
                 Console.WriteLine("Provider registry: " + (registry ? "PASS" : "FAIL"));
                 Console.WriteLine("Refresh policy: " + (policy ? "PASS" : "FAIL"));
                 Console.WriteLine("Settings persistence: " + (settings ? "PASS" : "FAIL"));
                 Console.WriteLine("Battery cache persistence: " + (cache ? "PASS" : "FAIL"));
                 Console.WriteLine("Isolated HID response transport: " + (isolated ? "PASS" : "FAIL"));
-                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated ? 0 : 1;
+                Console.WriteLine("Portable storage path resolution: " + (storage ? "PASS" : "FAIL"));
+                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated && storage ? 0 : 1;
                 return;
             }
             if (arg == "--plugin-self-test")
@@ -129,6 +131,15 @@ namespace PeripheralBatteryLite
                     BatterySnapshotStore.SelfTest() : RefreshPolicy.SelfTest();
                 Console.WriteLine(ok ? "PASS" : "FAIL");
                 Environment.ExitCode = ok ? 0 : 1;
+                return;
+            }
+            if (arg == "--storage-paths")
+            {
+                Console.WriteLine("MODE=" + (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    AppDataPaths.PortableMarker)) ? "PORTABLE" : "LEGACY"));
+                Console.WriteLine("ROOT=" + AppDataPaths.ResolveRoot());
+                Console.WriteLine("CACHE_PATH=" + AppDataPaths.CachePath);
+                Console.WriteLine("SETTINGS_PATH=" + AppDataPaths.SettingsPath);
                 return;
             }
             if (arg == "--cache-show")

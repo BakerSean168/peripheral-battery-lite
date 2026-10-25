@@ -44,8 +44,7 @@ namespace PeripheralBatteryLite
 
         public AppPreferencesStore(string path = null)
         {
-            PathName = path ?? System.IO.Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.LocalApplicationData), "PeripheralBatteryLite", "settings.json");
+            PathName = path ?? AppDataPaths.SettingsPath;
         }
 
         public AppPreferences Load()

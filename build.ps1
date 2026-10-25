@@ -23,6 +23,7 @@ $sourceFiles = @(
     'V87KeyboardBattery.cs',
     'SteelSeriesBattery.cs',
     'BatterySnapshotStore.cs',
+    'Core\AppDataPaths.cs',
     'Core\AppPreferences.cs',
     'Core\RefreshPolicy.cs',
     'Core\BatteryCoordinator.cs',
@@ -40,4 +41,5 @@ $references = @('/r:' + $contractPath)
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $csc @common @references '/target:winexe' ("/out:" + (Join-Path $dest 'PeripheralBatteryLite.exe')) @sourceFiles
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item -LiteralPath (Join-Path $root 'portable.flag') -Destination $dest -Force
 Write-Host ('Build succeeded: ' + $dest)
