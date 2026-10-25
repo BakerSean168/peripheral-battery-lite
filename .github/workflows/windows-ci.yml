@@ -37,6 +37,12 @@ jobs:
           & .\dist\PeripheralBatteryLite.Probe.exe --plugin-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Remove-Item .\dist\Plugins -Recurse -Force
+      - name: Verify open-source documentation is packaged
+        shell: pwsh
+        run: |
+          foreach ($required in @('LICENSE','README.md','README.en.md','CONTRIBUTING.md','docs/PROTOCOL_SOURCES.md','docs/PLUGINS.md')) {
+            if (!(Test-Path $required)) { throw ('Missing required documentation: ' + $required) }
+          }
       - name: Upload portable Windows program
         uses: actions/upload-artifact@v4
         with:
@@ -46,6 +52,14 @@ jobs:
             dist/PeripheralBatteryLite.Probe.exe
             dist/PeripheralBatteryLite.Contracts.dll
             dist/portable.flag
+            LICENSE
             README.md
+            README.en.md
+            CONTRIBUTING.md
+            SECURITY.md
             docs/PORTABLE.md
+            docs/PLUGINS.md
+            docs/ARCHITECTURE.md
+            docs/PROTOCOL_SOURCES.md
+            docs/ECOSYSTEM.md
           if-no-files-found: error
