@@ -137,8 +137,7 @@ namespace PeripheralBatteryLite
                                     panel.SetFooter("已完成 " + completed + "/" + scheduled.Count + " 台设备...");
                             }));
                         }
-                        catch (InvalidOperationException) { /* Closing window. */ }
-                        catch (ObjectDisposedException) { /* Closing window. */ }
+                        catch (InvalidOperationException) { /* Closing/disposed window. */ }
                     });
                 }
                 catch (Exception e) { failure = e; }
@@ -165,7 +164,6 @@ namespace PeripheralBatteryLite
                             Interlocked.Exchange(ref isRefreshing, 0);
                     }
                     catch (InvalidOperationException) { Interlocked.Exchange(ref isRefreshing, 0); }
-                    catch (ObjectDisposedException) { Interlocked.Exchange(ref isRefreshing, 0); }
                 }
             });
         }
