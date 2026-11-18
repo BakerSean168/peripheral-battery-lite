@@ -19,7 +19,7 @@
 ## Features
 
 - **Native WinForms tray and floating dashboard:** battery percentages, bars and last successful query timestamps.
-- **Manual refresh by default:** startup and cache display do not query HID; in manual mode the application does not register for Raw Input mouse/keyboard events.
+- **On-demand refresh by default:** startup and hovering over the tray icon do not query HID; left-clicking the tray icon refreshes once while toggling the panel, and the panel/context-menu refresh actions still work. Manual mode does not register for Raw Input mouse/keyboard events.
 - **Optional auto refresh:** off, every 30 minutes, 1 hour, 2 hours or 5 hours.
 - **Optional activity-only refresh:** passive Windows Raw Input device headers identify recent use of supported mice and keyboards, without logging typed characters. There is no reliable passive headset awake signal: audio providers remain manual-only when activity-only is on.
 - **Concurrent per-device query processes:** up to three isolated HID readers run in parallel, with each completed device card updated immediately. A stalled device does not block the others.
@@ -44,7 +44,7 @@ D:\opt\PeripheralBatteryLite\
 └── Plugins\                 # optional, trusted extensions only
 ```
 
-Launch `PeripheralBatteryLite.exe`, left-click its system tray icon to open the panel, and select **Refresh**. Open settings from the panel or tray context menu.
+Launch `PeripheralBatteryLite.exe`, then **left-click its system tray icon** to toggle the panel and query battery levels immediately. A second click also refreshes, without starting duplicate work if a query is already in progress. Open settings from the panel or tray context menu.
 
 If `portable.flag` is present, settings and cache are stored **next to the program**. Without the marker, legacy settings and cache are stored under `%LOCALAPPDATA%\PeripheralBatteryLite`. See [portable migration guide](docs/PORTABLE.md).
 
@@ -54,7 +54,7 @@ If you move the folder after enabling Windows startup, update the Run registry p
 
 | Option | What happens |
 | --- | --- |
-| Off (default) | No automatic HID battery queries; only cached values are displayed |
+| Off (default) | No scheduled HID queries; launch shows cached values, while a tray left-click or manual refresh triggers a query |
 | 30 / 60 / 120 / 300 minutes | Eligible devices are queried only when the interval has elapsed |
 | Activity-only (on by default) | Mouse/keyboard require a matching device input event in the past ~3 minutes |
 | Audio with activity-only | Nova 5 is skipped by automatic polling; manual refresh remains available |

@@ -86,7 +86,13 @@ namespace PeripheralBatteryLite
                 Icon = currentIcon, Visible = true, ContextMenuStrip = menu,
                 Text = "Peripheral Battery · 本地电量记录"
             };
-            tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowPanel(); };
+            tray.MouseClick += (s, e) =>
+            {
+                if (e.Button != MouseButtons.Left) return;
+                ShowPanel();
+                // Explicit tray clicks are manual refresh requests, even with auto polling off.
+                Refresh(false, providers);
+            };
 
             // The scheduler inspects only cached timestamps and passive input events.
             // It does not run any device queries while automatic polling is OFF.
