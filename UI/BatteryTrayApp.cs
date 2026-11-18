@@ -12,6 +12,8 @@ namespace PeripheralBatteryLite
     {
         private readonly AppPreferencesStore preferencesStore;
         private readonly BatterySnapshotStore cache;
+        private readonly BatteryHistoryStore history;
+        private readonly BatteryAlertStore alerts;
         private readonly List<IBatteryProvider> providers;
         private readonly RawInputActivityTracker activity;
         private readonly BatteryPanel panel;
@@ -22,10 +24,13 @@ namespace PeripheralBatteryLite
         private AppPreferences prefs;
         private Icon currentIcon;
         private string lastIconValue = "--";
+        private Color lastIconTint = Color.Empty;
+        private string lastAlertDevice;
         private string lastTooltip = "";
         private int isRefreshing;
         private bool closing;
         private bool settingsOpen;
+        private bool detailsOpen;
         private bool updatingMenus;
 
         public BatteryTrayApp()
@@ -34,12 +39,15 @@ namespace PeripheralBatteryLite
             prefs = preferencesStore.Load();
             providers = ProviderRegistry.Load(prefs.EnableExternalPlugins);
             cache = new BatterySnapshotStore();
+            history = new BatteryHistoryStore();
+            alerts = new BatteryAlertStore();
             panel = new BatteryPanel();
             activity = new RawInputActivityTracker();
 
             panel.RawInputReceived += activity.ProcessMessage;
             panel.RefreshRequested += (s, e) => Refresh(false, providers);
             panel.SettingsRequested += (s, e) => ShowSettings();
+            panel.DetailsRequested += (deviceId) => ShowDetails(deviceId);
             // Manual-only mode is passive: do not subscribe to OS input.
             // An activity observer is only needed for gated auto polling.
             // Keep a hidden WinForms handle for tray-menu refresh callbacks.
@@ -51,6 +59,14 @@ namespace PeripheralBatteryLite
             var menu = new ContextMenuStrip();
             menu.Items.Add("打开电量面板", null, (s, e) => ShowPanel());
             menu.Items.Add("立即刷新三台设备", null, (s, e) => Refresh(false, providers));
+            var detailMenu = new ToolStripMenuItem("设备详情 / 电量历史");
+            foreach (var provider in providers)
+            {
+                string providerId = provider.Id;
+                detailMenu.DropDownItems.Add(provider.DisplayName, null,
+                    (s, e) => ShowDetails(providerId));
+            }
+            menu.Items.Add(detailMenu);
             menu.Items.Add("偏好设置...", null, (s, e) => ShowSettings());
             menu.Items.Add(new ToolStripSeparator());
             pinnedMenu = new ToolStripMenuItem("固定悬浮窗") { Checked = prefs.PinPanel, CheckOnClick = true };
@@ -80,11 +96,16 @@ namespace PeripheralBatteryLite
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, (s, e) => Quit());
 
-            currentIcon = CreateIcon("--");
+            currentIcon = CreateIcon("--", UiTheme.Accent);
             tray = new NotifyIcon
             {
                 Icon = currentIcon, Visible = true, ContextMenuStrip = menu,
                 Text = "Peripheral Battery · 本地电量记录"
+            };
+            tray.BalloonTipClicked += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(lastAlertDevice)) ShowDetails(lastAlertDevice);
+                else ShowPanel();
             };
             tray.MouseClick += (s, e) =>
             {
@@ -99,12 +120,25 @@ namespace PeripheralBatteryLite
             scheduler = new System.Windows.Forms.Timer { Interval = 30000, Enabled = prefs.IntervalMinutes != 0 };
             scheduler.Tick += (s, e) => TickAutoRefresh();
 
+            BootstrapHistory();
             DisplayCache();
+        }
+
+        private void BootstrapHistory()
+        {
+            foreach (var snapshot in cache.Snapshot(providers.Select(p => p.Id)))
+                if (snapshot.Percent.HasValue && snapshot.LastSuccessUtc.HasValue &&
+                    history.Recent(snapshot.Name, 365).Count == 0)
+                    history.Record(snapshot.Name, snapshot.Percent, snapshot.Charging,
+                        snapshot.LastSuccessUtc.Value, prefs.HistoryRetentionDays,
+                        snapshot.VoltageMillivolts);
         }
 
         private void TickAutoRefresh()
         {
-            if (closing || isRefreshing != 0 || prefs.IntervalMinutes == 0) return;
+            if (closing) return;
+            TryNotifyFromCache();
+            if (isRefreshing != 0 || prefs.IntervalMinutes == 0) return;
             List<BatteryReading> saved = cache.Snapshot(providers.Select(p => p.Id));
             List<IBatteryProvider> due = BatteryCoordinator.SelectDue(
                 providers, saved, prefs, activity, DateTime.UtcNow);
@@ -117,7 +151,7 @@ namespace PeripheralBatteryLite
                 Interlocked.CompareExchange(ref isRefreshing, 1, 0) != 0) return;
             var scheduled = selected.ToList();
             panel.SetLoading(true); // Do not silently ignore manual clicks during an automatic read.
-            panel.SetFooter(automatic ? "正在更新活跃设备..." : "正在并行查询外设...");
+            panel.SetFooter(automatic ? "正在后台查询外设..." : "正在并行查询外设...");
             int completed = 0; // Only changed on the UI thread.
             bool saveFailed = false;
             ThreadPool.QueueUserWorkItem(o =>
@@ -137,7 +171,17 @@ namespace PeripheralBatteryLite
                                 if (closing) return;
                                 cache.MergeAndSave(new[] { reading });
                                 if (cache.LastSaveError != null) saveFailed = true;
+                                if (reading.Status == "OK" && reading.Percent.HasValue)
+                                {
+                                    DateTime sampledAt = DateTime.UtcNow;
+                                    history.Record(reading.Name, reading.Percent, reading.Charging,
+                                        sampledAt, prefs.HistoryRetentionDays,
+                                        reading.VoltageMillivolts);
+                                    alerts.Observe(reading.Name, reading.Percent.Value,
+                                        reading.Charging, prefs.GetDevice(reading.Name));
+                                }
                                 DisplayCache();
+                                TryNotifyFromCache();
                                 completed++;
                                 if (completed < scheduled.Count)
                                     panel.SetFooter("已完成 " + completed + "/" + scheduled.Count + " 台设备...");
@@ -177,18 +221,39 @@ namespace PeripheralBatteryLite
         private void DisplayCache()
         {
             List<BatteryReading> snapshots = cache.Snapshot(providers.Select(p => p.Id));
-            panel.UpdateData(snapshots, providers, prefs);
-            var mouse = snapshots.FirstOrDefault(r => r.Name == BatterySnapshotStore.Mouse);
-            string number = mouse != null && mouse.Percent.HasValue ? mouse.Percent.Value.ToString() : "--";
+            var trends = new Dictionary<string, BatteryInsights>();
+            foreach (var provider in providers)
+            {
+                var reading = snapshots.FirstOrDefault(r => r.Name == provider.Id);
+                var config = prefs.GetDevice(provider.Id);
+                trends[provider.Id] = BatteryInsights.Calculate(history.Recent(provider.Id, 30),
+                    reading == null ? null : reading.Percent,
+                    config.AlertThreshold, config.RatedCapacityMah);
+            }
+            panel.UpdateData(snapshots, providers, prefs, trends);
+            BatteryReading selected = null;
+            if (prefs.TrayIconDeviceId == "lowest")
+                selected = snapshots.Where(r => r.Percent.HasValue &&
+                    r.LastSuccessUtc.HasValue && r.Status != "Previous query failed" &&
+                    DateTime.UtcNow - r.LastSuccessUtc.Value.ToUniversalTime() < TimeSpan.FromHours(24))
+                    .OrderBy(r => r.Percent.Value).FirstOrDefault();
+            else
+                selected = snapshots.FirstOrDefault(r => r.Name == prefs.TrayIconDeviceId);
+            string number = selected != null && selected.Percent.HasValue ?
+                selected.Percent.Value.ToString() : "--";
+            Color tint = selected != null && selected.Percent.HasValue &&
+                selected.Percent.Value <= prefs.GetDevice(selected.Name).AlertThreshold ?
+                UiTheme.Warning : UiTheme.Accent;
             // Generating Win32 HICONs allocates native GDI resources. Only
             // replace the icon if its displayed percentage actually changes.
-            if (number != lastIconValue)
+            if (number != lastIconValue || tint.ToArgb() != lastIconTint.ToArgb())
             {
-                Icon next = CreateIcon(number);
+                Icon next = CreateIcon(number, tint);
                 tray.Icon = next;
                 if (currentIcon != null) currentIcon.Dispose();
                 currentIcon = next;
                 lastIconValue = number;
+                lastIconTint = tint;
             }
             string mouseLabel = Value(snapshots, BatterySnapshotStore.Mouse);
             string keyboard = Value(snapshots, BatterySnapshotStore.Keyboard);
@@ -206,6 +271,59 @@ namespace PeripheralBatteryLite
         {
             var r = values.FirstOrDefault(x => x.Name == name);
             return r != null && r.Percent.HasValue ? r.Percent.Value + "%" : "--";
+        }
+
+        private void TryNotifyFromCache()
+        {
+            if (closing) return;
+            var delivered = alerts.DeliverPending(prefs,
+                cache.Snapshot(providers.Select(p => p.Id)), DateTime.UtcNow);
+            if (delivered.Count == 0) return;
+            lastAlertDevice = delivered.Count == 1 ? delivered[0].DeviceId : null;
+            var summary = string.Join("\n", delivered.Select(entry =>
+                prefs.NameOf(entry.DeviceId, entry.DeviceId) + " · " + entry.Percent +
+                "%（阈值 " + prefs.GetDevice(entry.DeviceId).AlertThreshold + "%）").ToArray());
+            tray.ShowBalloonTip(8000, "外设电量不足 · 建议充电",
+                summary, ToolTipIcon.Warning);
+        }
+
+        private void ShowDetails(string id)
+        {
+            if (closing || detailsOpen || settingsOpen) return;
+            var provider = providers.FirstOrDefault(p => p.Id == id);
+            if (provider == null) return;
+            detailsOpen = true;
+            try
+            {
+                var snapshot = cache.Snapshot(providers.Select(p => p.Id))
+                    .FirstOrDefault(r => r.Name == id);
+                using (var form = new DeviceDetailForm(id,
+                    prefs.NameOf(id, provider.DisplayName), snapshot, prefs, history, alerts))
+                {
+                    if (form.ShowDialog() != DialogResult.OK) return;
+                    if (!preferencesStore.Save(form.ResultSettings))
+                    {
+                        MessageBox.Show(preferencesStore.LastError ?? "设备设置保存失败",
+                            "无法保存设置", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                    prefs = form.ResultSettings;
+                    UpdateActivityTracking();
+                    DisplayCache();
+                }
+            }
+            finally { detailsOpen = false; }
+        }
+
+        private void UpdateActivityTracking()
+        {
+            bool shouldTrack = RefreshPolicy.RequiresActivityTracking(prefs);
+            if (shouldTrack && !activity.IsRegistered && !activity.Register(panel.Handle))
+                MessageBox.Show("无法启用键鼠活动监听，活跃设备限制可能无法生效。",
+                    "设备活动监听不可用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else if (!shouldTrack && activity.IsRegistered && !activity.Unregister())
+                MessageBox.Show("无法注销键鼠活动监听，请重新启动程序。",
+                    "设备活动监听", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void ShowSettings()
@@ -227,13 +345,7 @@ namespace PeripheralBatteryLite
                         return;
                     }
                     prefs = next;
-                    bool shouldTrack = RefreshPolicy.RequiresActivityTracking(prefs);
-                    if (shouldTrack && !activity.IsRegistered && !activity.Register(panel.Handle))
-                        MessageBox.Show("无法启用键鼠活动监听。启用活动限制时，自动查询将被跳过；仍可以手动刷新。",
-                            "设备活动监听不可用", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    else if (!shouldTrack && activity.IsRegistered && !activity.Unregister())
-                        MessageBox.Show("无法注销键鼠活动监听，请重新启动程序。",
-                            "设备活动监听", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    UpdateActivityTracking();
                     panel.Pinned = prefs.PinPanel;
                     updatingMenus = true;
                     try { pinnedMenu.Checked = prefs.PinPanel; }
@@ -277,7 +389,7 @@ namespace PeripheralBatteryLite
             panel.Activate();
         }
 
-        private static Icon CreateIcon(string number)
+        private static Icon CreateIcon(string number, Color tint)
         {
             using (var img = new Bitmap(64, 64))
             using (Graphics g = Graphics.FromImage(img))
@@ -288,7 +400,7 @@ namespace PeripheralBatteryLite
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
                 using (var fill = new SolidBrush(UiTheme.Background))
                     g.FillEllipse(fill, 1, 1, 62, 62);
-                using (var pen = new Pen(UiTheme.Accent, 4))
+                using (var pen = new Pen(tint, 4))
                     g.DrawEllipse(pen, 3, 3, 58, 58);
                 using (var brush = new SolidBrush(UiTheme.Text))
                 {

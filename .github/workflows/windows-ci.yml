@@ -22,6 +22,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\PeripheralBatteryLite.Probe.exe --scheduler-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --analysis-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --ui-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\PeripheralBatteryLite.Probe.exe --cache-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $paths = & .\dist\PeripheralBatteryLite.Probe.exe --storage-paths
@@ -40,9 +44,12 @@ jobs:
       - name: Verify open-source documentation is packaged
         shell: pwsh
         run: |
-          foreach ($required in @('LICENSE','README.md','README.en.md','CONTRIBUTING.md','docs/PROTOCOL_SOURCES.md','docs/PLUGINS.md')) {
+          foreach ($required in @('LICENSE','README.md','README.en.md','CONTRIBUTING.md','docs/PROTOCOL_SOURCES.md','docs/PLUGINS.md','docs/BATTERY_ANALYTICS.md')) {
             if (!(Test-Path $required)) { throw ('Missing required documentation: ' + $required) }
           }
+      - name: Package release ZIP without user data
+        shell: pwsh
+        run: ./package-release.ps1
       - name: Upload portable Windows program
         uses: actions/upload-artifact@v4
         with:
@@ -52,6 +59,7 @@ jobs:
             dist/PeripheralBatteryLite.Probe.exe
             dist/PeripheralBatteryLite.Contracts.dll
             dist/portable.flag
+            dist/PeripheralBatteryLite-v0.8.0-windows-x64.zip
             LICENSE
             README.md
             README.en.md
@@ -62,4 +70,5 @@ jobs:
             docs/ARCHITECTURE.md
             docs/PROTOCOL_SOURCES.md
             docs/ECOSYSTEM.md
+            docs/BATTERY_ANALYTICS.md
           if-no-files-found: error

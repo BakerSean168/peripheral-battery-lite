@@ -12,6 +12,8 @@ namespace PeripheralBatteryLite
         public const string PortableMarker = "portable.flag";
         public const string CacheFilename = "battery-cache.json";
         public const string SettingsFilename = "settings.json";
+        public const string HistoryFilename = "battery-history.json";
+        public const string AlertsFilename = "battery-alerts.json";
 
         public static string ResolveRoot(string appDirectory = null, string localAppDataDirectory = null)
         {
@@ -31,6 +33,16 @@ namespace PeripheralBatteryLite
         public static string SettingsPath
         {
             get { return Path.Combine(ResolveRoot(), SettingsFilename); }
+        }
+
+        public static string HistoryPath
+        {
+            get { return Path.Combine(ResolveRoot(), HistoryFilename); }
+        }
+
+        public static string AlertsPath
+        {
+            get { return Path.Combine(ResolveRoot(), AlertsFilename); }
         }
 
         public static bool SelfTest()

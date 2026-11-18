@@ -31,6 +31,18 @@ namespace PeripheralBatteryLite
             return true;
         }
 
+        public static bool ParseMouseDetailed(byte[] report, out int percent,
+            out bool charging, out int? voltageMillivolts)
+        {
+            voltageMillivolts = null;
+            if (!ParseMouse(report, out percent, out charging)) return false;
+            // Compx/Nordic battery status payload bytes [8..9] contain a
+            // big-endian millivolt reading. No additional HID command is sent.
+            int raw = (report[8] << 8) | report[9];
+            if (raw >= 2500 && raw <= 4800) voltageMillivolts = raw;
+            return true;
+        }
+
         private static readonly byte[] MouseQuery =
             { 0x08, 0x04, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x49 };
         private static readonly byte[] KeyboardQuery = { 4, 0, 0, 26, 6, 0, 0, 0 };
@@ -100,13 +112,15 @@ namespace PeripheralBatteryLite
                 {
                     int value = 0;
                     bool chargeMouse = false;
+                    int? voltageMouse = null;
                     bool? chargeKeyboard = null;
                     byte[] b = HidWindows.Exchange(ep, mouse ? MouseQuery : KeyboardQuery,
-                        result => mouse ? ParseMouse(result, out value, out chargeMouse)
+                        result => mouse ? ParseMouseDetailed(result, out value, out chargeMouse, out voltageMouse)
                                         : ParseKeyboard(result, out value, out chargeKeyboard));
                     if (b == null) { reading.Status = "No valid battery reply"; continue; }
                     reading.Percent = value;
                     reading.Charging = mouse ? (bool?)chargeMouse : chargeKeyboard;
+                    reading.VoltageMillivolts = mouse ? voltageMouse : null;
                     reading.Status = "OK";
                     reading.Detail = ep.ToString();
                     return reading;
@@ -131,12 +145,22 @@ namespace PeripheralBatteryLite
         {
             byte[] sampleMouse = { 0x08, 0x04, 0, 0, 0, 0x02, 0x23, 0, 0x0E, 0x94, 0, 0, 0, 0, 0, 0, 0x82 };
             int pct; bool charging; bool? kbCharging;
-            bool mouseOk = ParseMouse(sampleMouse, out pct, out charging) && pct == 35 && !charging;
+            int? mv;
+            bool mouseOk = ParseMouseDetailed(sampleMouse, out pct, out charging, out mv) &&
+                pct == 35 && !charging && mv == 3732;
             var wrong = (byte[])sampleMouse.Clone(); wrong[6] = 101;
             bool badRejected = !ParseMouse(wrong, out pct, out charging);
+            var noVoltage = (byte[])sampleMouse.Clone();
+            noVoltage[8] = 0; noVoltage[9] = 0;
+            int sum = 0;
+            for (int i = 0; i < 16; ++i) sum += noVoltage[i];
+            noVoltage[16] = (byte)((0x55 - sum) & 255);
+            bool unavailable = ParseMouseDetailed(noVoltage, out pct, out charging, out mv) &&
+                mv == null;
             byte[] sampleKb = { 4, 0, 0, 26, 6, 0, 0, 0, 80, 1, 0, 0, 0 };
             bool kbOk = ParseKeyboard(sampleKb, out pct, out kbCharging) && pct == 80 && kbCharging == true;
-            return mouseOk && badRejected && kbOk && SteelSeriesBattery.SelfTest() && V87KeyboardBattery.SelfTest();
+            return mouseOk && badRejected && unavailable && kbOk &&
+                SteelSeriesBattery.SelfTest() && V87KeyboardBattery.SelfTest();
         }
     }
 }

@@ -55,10 +55,8 @@ namespace PeripheralBatteryLite
             {
                 var previous = cached.FirstOrDefault(r => r.Name == provider.Id);
                 DateTime? lastAttempt = previous == null ? null : previous.LastQueryUtc;
-                bool recent = activity != null && activity.RecentlyActive(provider.Activity, nowUtc);
                 if (RefreshPolicy.IsDue(lastAttempt, prefs.IntervalMinutes, nowUtc) &&
-                    RefreshPolicy.EligibleForAutomaticQuery(provider,
-                        prefs.OnlyWhenDeviceActive, recent))
+                    RefreshPolicy.ShouldAutoQuery(provider, prefs, activity, nowUtc))
                     selected.Add(provider);
             }
             return selected;

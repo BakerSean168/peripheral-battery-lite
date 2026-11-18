@@ -1,6 +1,6 @@
 # Peripheral Battery Lite
 
-[简体中文](README.md) · [Releases](https://github.com/BakerSean168/peripheral-battery-lite/releases) · [Provider guide](docs/PLUGINS.md) · [MIT License](LICENSE)
+[简体中文](README.md) · [Releases](https://github.com/BakerSean168/peripheral-battery-lite/releases) · [Battery analytics & hardware research](docs/BATTERY_ANALYTICS.md) · [Provider guide](docs/PLUGINS.md) · [MIT License](LICENSE)
 
 **A small, extensible Windows tray monitor for wireless peripheral batteries.** Read mouse, keyboard and headset battery levels directly over HID, without leaving vendor control software running.
 
@@ -20,10 +20,14 @@
 
 - **Native WinForms tray and floating dashboard:** battery percentages, bars and last successful query timestamps.
 - **On-demand refresh by default:** startup and hovering over the tray icon do not query HID; left-clicking the tray icon refreshes once while toggling the panel, and the panel/context-menu refresh actions still work. Manual mode does not register for Raw Input mouse/keyboard events.
-- **Optional auto refresh:** off, every 30 minutes, 1 hour, 2 hours or 5 hours.
+- **Optional scheduled refresh:** off, every 30 minutes, 1, 2, **4** or 5 hours, with a per-device inherit/active/always/manual override.
 - **Optional activity-only refresh:** passive Windows Raw Input device headers identify recent use of supported mice and keyboards, without logging typed characters. There is no reliable passive headset awake signal: audio providers remain manual-only when activity-only is on.
 - **Concurrent per-device query processes:** up to three isolated HID readers run in parallel, with each completed device card updated immediately. A stalled device does not block the others.
 - **Local cache:** preserve the last successful battery value and its timestamp, alongside the most recent failure time. Unchanged percentages reuse the existing tray icon.
+- **Per-device low-battery alerts:** editable threshold (45% default, alerts opt-in), Windows balloon notifications with deduplication, quiet hours, 24-hour snooze, notification history.
+- **Battery analytics:** sampled history, 7/30/90/180-day plots, CSV export, guarded discharge/remaining-runtime estimates; optional user-supplied nominal capacity for **estimated** mAh and average equivalent mA (not real-time current).
+- **Device details and tray customization:** click a device card to edit nickname, alerts and per-device polling; select a fixed device or recent-lowest battery for the tray icon.
+- **ATK voltage:** parse a plausible millivolt field from the existing 17-byte mouse reply. Live voltage for this exact receiver has not yet been validated.
 - **Opt-in Windows login startup** using the current user's Run key.
 - **Extensible protocol providers:** three built-in `IBatteryProvider` implementations, plus optional compiled .NET Framework DLL providers. Third-party DLLs are disabled by default and **are not sandboxed**.
 
@@ -44,7 +48,7 @@ D:\opt\PeripheralBatteryLite\
 └── Plugins\                 # optional, trusted extensions only
 ```
 
-Launch `PeripheralBatteryLite.exe`, then **left-click its system tray icon** to toggle the panel and query battery levels immediately. A second click also refreshes, without starting duplicate work if a query is already in progress. Open settings from the panel or tray context menu.
+Launch `PeripheralBatteryLite.exe`, then **left-click its system tray icon** to toggle the panel and query battery levels immediately. A second click also refreshes, without starting duplicate work if a query is already in progress. Click any battery card or use the tray context menu to open detailed history and per-device settings.
 
 If `portable.flag` is present, settings and cache are stored **next to the program**. Without the marker, legacy settings and cache are stored under `%LOCALAPPDATA%\PeripheralBatteryLite`. See [portable migration guide](docs/PORTABLE.md).
 
@@ -55,9 +59,9 @@ If you move the folder after enabling Windows startup, update the Run registry p
 | Option | What happens |
 | --- | --- |
 | Off (default) | No scheduled HID queries; launch shows cached values, while a tray left-click or manual refresh triggers a query |
-| 30 / 60 / 120 / 300 minutes | Eligible devices are queried only when the interval has elapsed |
+| 30 / 60 / 120 / **240** / 300 minutes | Eligible devices are queried only when the interval has elapsed |
 | Activity-only (on by default) | Mouse/keyboard require a matching device input event in the past ~3 minutes |
-| Audio with activity-only | Nova 5 is skipped by automatic polling; manual refresh remains available |
+| Audio with activity-only | Nova 5 is skipped by default; an explicit per-device always-query override can change this, possibly affecting sleep |
 | Activity-only disabled | All devices may be queried on schedule, possibly waking them |
 
 Recent input activity is a best-effort signal, **not a direct device power-state API**. Even a read-only battery request may delay device sleep.

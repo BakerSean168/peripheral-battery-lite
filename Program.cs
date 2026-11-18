@@ -11,6 +11,7 @@ namespace PeripheralBatteryLite
 {
     internal static class Program
     {
+        private const string Version = "0.8.0";
         [STAThread]
         private static void Main(string[] args)
         {
@@ -37,6 +38,11 @@ namespace PeripheralBatteryLite
         private static void RunCommand(string[] args)
         {
             string arg = args[0];
+            if (arg == "--version")
+            {
+                Console.WriteLine("Peripheral Battery Lite v" + Version);
+                return;
+            }
             if (arg == "--self-test")
             {
                 bool protocol = BatteryProtocols.SelfTest();
@@ -47,6 +53,9 @@ namespace PeripheralBatteryLite
                 bool isolated = IsolatedQueryHost.SelfTest();
                 bool storage = AppDataPaths.SelfTest();
                 bool staleUi = BatteryPanel.SelfTest();
+                bool history = BatteryHistoryStore.SelfTest();
+                bool insights = BatteryInsights.SelfTest();
+                bool alerts = BatteryAlertStore.SelfTest();
                 Console.WriteLine("Protocol parsers: " + (protocol ? "PASS" : "FAIL"));
                 Console.WriteLine("Provider registry: " + (registry ? "PASS" : "FAIL"));
                 Console.WriteLine("Refresh policy: " + (policy ? "PASS" : "FAIL"));
@@ -55,7 +64,11 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("Isolated HID response transport: " + (isolated ? "PASS" : "FAIL"));
                 Console.WriteLine("Portable storage path resolution: " + (storage ? "PASS" : "FAIL"));
                 Console.WriteLine("Stale cache/failure UI status: " + (staleUi ? "PASS" : "FAIL"));
-                Environment.ExitCode = protocol && registry && policy && settings && cache && isolated && storage && staleUi ? 0 : 1;
+                Console.WriteLine("Battery history and CSV export: " + (history ? "PASS" : "FAIL"));
+                Console.WriteLine("Drain and capacity estimates: " + (insights ? "PASS" : "FAIL"));
+                Console.WriteLine("Notification state and snooze: " + (alerts ? "PASS" : "FAIL"));
+                Environment.ExitCode = protocol && registry && policy && settings && cache &&
+                    isolated && storage && staleUi && history && insights && alerts ? 0 : 1;
                 return;
             }
             if (arg == "--plugin-self-test")
@@ -88,7 +101,27 @@ namespace PeripheralBatteryLite
                 }
                 return;
             }
-            if (arg == "--render-settings")
+            if (arg == "--ui-self-test")
+            {
+                Application.EnableVisualStyles();
+                using (var panel = new BatteryPanel())
+                {
+                    panel.UpdateData(new List<BatteryReading>(), ProviderRegistry.Load(false),
+                        new AppPreferences());
+                    string selected = null;
+                    panel.DetailsRequested += id => selected = id;
+                    var hit = typeof(BatteryPanel).GetMethod("OnMouseClick",
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.NonPublic);
+                    hit.Invoke(panel, new object[] {
+                        new MouseEventArgs(MouseButtons.Left, 1, 38, 83 + 88 + 25, 0) });
+                    bool good = selected == BatterySnapshotStore.Keyboard;
+                    Console.WriteLine(good ? "UI_CARD_CLICK=PASS" : "UI_CARD_CLICK=FAIL");
+                    Environment.ExitCode = good ? 0 : 1;
+                }
+                return;
+            }
+            if (arg == "--render-settings" || arg == "--render-settings-data")
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
@@ -96,17 +129,57 @@ namespace PeripheralBatteryLite
                     false, 3, true))
                 {
                     settings.Show();
+                    if (arg == "--render-settings-data")
+                        settings.Controls.OfType<TabControl>().First().SelectedIndex = 1;
                     Application.DoEvents();
                     using (var bitmap = new Bitmap(settings.Width, settings.Height))
                     {
                         settings.DrawToBitmap(bitmap,
                             new Rectangle(0, 0, bitmap.Width, bitmap.Height));
                         string location = Path.Combine(Path.GetTempPath(),
+                            arg == "--render-settings-data" ?
+                            "PeripheralBatteryLite-settings-data-preview.png" :
                             "PeripheralBatteryLite-settings-preview.png");
                         bitmap.Save(location, ImageFormat.Png);
                         Console.WriteLine("PREVIEW=" + location);
                     }
                     settings.Hide();
+                }
+                return;
+            }
+            if (arg == "--render-detail" || arg == "--render-detail-settings" ||
+                arg == "--render-detail-notifications")
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                var prefs = new AppPreferencesStore().Load();
+                var providers = ProviderRegistry.Load(false);
+                string id = args.Length > 1 ? args[1] : BatterySnapshotStore.Mouse;
+                var provider = providers.FirstOrDefault(p => p.Id == id);
+                if (provider == null) { Console.WriteLine("Unknown device"); Environment.ExitCode = 2; return; }
+                var cached = new BatterySnapshotStore().Snapshot();
+                var snapshot = cached.FirstOrDefault(x => x.Name == id);
+                using (var form = new DeviceDetailForm(id, provider.DisplayName, snapshot,
+                    prefs, new BatteryHistoryStore(), new BatteryAlertStore()))
+                {
+                    form.Show();
+                    if (arg == "--render-detail-settings" || arg == "--render-detail-notifications")
+                        form.Controls.OfType<TabControl>().First().SelectedIndex =
+                            arg == "--render-detail-settings" ? 1 : 2;
+                    Application.DoEvents();
+                    using (var bitmap = new Bitmap(form.Width, form.Height))
+                    {
+                        form.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
+                        string location = Path.Combine(Path.GetTempPath(),
+                            arg == "--render-detail-settings" ?
+                            "PeripheralBatteryLite-detail-settings-preview.png" :
+                            arg == "--render-detail-notifications" ?
+                            "PeripheralBatteryLite-detail-notifications-preview.png" :
+                            "PeripheralBatteryLite-detail-preview.png");
+                        bitmap.Save(location, ImageFormat.Png);
+                        Console.WriteLine("PREVIEW=" + location);
+                    }
+                    form.Hide();
                 }
                 return;
             }
@@ -132,10 +205,13 @@ namespace PeripheralBatteryLite
                 }
                 return;
             }
-            if (arg == "--cache-self-test" || arg == "--scheduler-self-test")
+            if (arg == "--cache-self-test" || arg == "--scheduler-self-test" ||
+                arg == "--analysis-self-test")
             {
-                bool ok = arg == "--cache-self-test" ?
-                    BatterySnapshotStore.SelfTest() : RefreshPolicy.SelfTest();
+                bool ok = arg == "--cache-self-test" ? BatterySnapshotStore.SelfTest() :
+                    arg == "--scheduler-self-test" ? RefreshPolicy.SelfTest() :
+                    BatteryHistoryStore.SelfTest() && BatteryInsights.SelfTest() &&
+                    BatteryAlertStore.SelfTest();
                 Console.WriteLine(ok ? "PASS" : "FAIL");
                 Environment.ExitCode = ok ? 0 : 1;
                 return;
@@ -147,6 +223,20 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("ROOT=" + AppDataPaths.ResolveRoot());
                 Console.WriteLine("CACHE_PATH=" + AppDataPaths.CachePath);
                 Console.WriteLine("SETTINGS_PATH=" + AppDataPaths.SettingsPath);
+                Console.WriteLine("HISTORY_PATH=" + AppDataPaths.HistoryPath);
+                Console.WriteLine("ALERTS_PATH=" + AppDataPaths.AlertsPath);
+                return;
+            }
+            if (arg == "--history-show")
+            {
+                var history = new BatteryHistoryStore();
+                var prefs = new AppPreferencesStore().Load();
+                foreach (var p in ProviderRegistry.Load(false))
+                {
+                    var samples = history.Recent(p.Id, 30);
+                    Console.WriteLine(p.Id + ": " + samples.Count + " readings (30d)");
+                }
+                Console.WriteLine("HISTORY_PATH=" + AppDataPaths.HistoryPath);
                 return;
             }
             if (arg == "--cache-show")
@@ -162,6 +252,13 @@ namespace PeripheralBatteryLite
                 var preferences = new AppPreferencesStore();
                 var p = preferences.Load();
                 Console.WriteLine("poll_interval_minutes=" + p.IntervalMinutes);
+                Console.WriteLine("quiet_hours=" + p.QuietHoursEnabled);
+                Console.WriteLine("tray_icon_device=" + p.TrayIconDeviceId);
+                foreach (var device in p.Devices)
+                    Console.WriteLine("device=" + device.DeviceId +
+                        " alerts=" + device.AlertsEnabled +
+                        " threshold=" + device.AlertThreshold +
+                        " policy=" + device.AutoQueryMode);
                 Console.WriteLine("only_when_device_active=" + p.OnlyWhenDeviceActive);
                 Console.WriteLine("external_dll_plugins=" + p.EnableExternalPlugins);
                 Console.WriteLine("startup=" + StartupRegistration.Enabled);
@@ -216,7 +313,7 @@ namespace PeripheralBatteryLite
                 }
                 return;
             }
-            Console.WriteLine("Peripheral Battery Lite: --self-test | --cache-show | --settings-show |" +
+            Console.WriteLine("Peripheral Battery Lite: --self-test | --history-show | --analysis-self-test | --cache-show | --settings-show |" +
                 " --scheduler-self-test | --probe | --once | --refresh-cache |" +
                 " --mouse-only | --keyboard-only | --headset-only");
         }

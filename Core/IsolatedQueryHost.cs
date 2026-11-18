@@ -19,6 +19,7 @@ namespace PeripheralBatteryLite
         [DataMember(Name = "vid_pid")] public string VidPid { get; set; }
         [DataMember(Name = "percent")] public int? Percent { get; set; }
         [DataMember(Name = "charging")] public bool? Charging { get; set; }
+        [DataMember(Name = "voltage_mv")] public int? VoltageMillivolts { get; set; }
         [DataMember(Name = "status")] public string Status { get; set; }
     }
 
@@ -144,7 +145,9 @@ namespace PeripheralBatteryLite
                         typeof(ProviderPayload)).ReadObject(input);
                     if (obj == null || string.IsNullOrWhiteSpace(obj.Name) ||
                         string.IsNullOrWhiteSpace(obj.Status) ||
-                        (obj.Percent.HasValue && (obj.Percent < 0 || obj.Percent > 100)))
+                        (obj.Percent.HasValue && (obj.Percent < 0 || obj.Percent > 100)) ||
+                        (obj.VoltageMillivolts.HasValue &&
+                         (obj.VoltageMillivolts < 2500 || obj.VoltageMillivolts > 4800)))
                         return false;
                     var pair = (obj.VidPid ?? "").Split(':');
                     ushort vid = 0, pid = 0;
@@ -158,7 +161,8 @@ namespace PeripheralBatteryLite
                     reading = new BatteryReading
                     {
                         Name = obj.Name, Status = obj.Status, Percent = obj.Percent,
-                        Charging = obj.Charging, Vid = vid, Pid = pid
+                        Charging = obj.Charging, VoltageMillivolts = obj.VoltageMillivolts,
+                        Vid = vid, Pid = pid
                     };
                     return true;
                 }
@@ -170,8 +174,8 @@ namespace PeripheralBatteryLite
         {
             BatteryReading value;
             bool transport = TryParse("{\"name\":\"VXE V87\",\"vid_pid\":\"320F:5088\"," +
-                "\"percent\":88,\"charging\":false,\"status\":\"OK\"}", out value) &&
-                value.Percent == 88 && value.Status == "OK";
+                "\"percent\":88,\"charging\":false,\"voltage_mv\":3777,\"status\":\"OK\"}", out value) &&
+                value.Percent == 88 && value.Status == "OK" && value.VoltageMillivolts == 3777;
             if (!transport || TryParse("{\"name\":\"VXE V87\",\"percent\":111,\"status\":\"OK\"}", out value)
                 || TryParse("{broken", out value))
                 return false;

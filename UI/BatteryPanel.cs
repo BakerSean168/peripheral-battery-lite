@@ -15,12 +15,14 @@ namespace PeripheralBatteryLite
         private List<BatteryReading> readings = new List<BatteryReading>();
         private List<IBatteryProvider> providers = new List<IBatteryProvider>();
         private AppPreferences prefs = new AppPreferences();
+        private Dictionary<string, BatteryInsights> insights = new Dictionary<string, BatteryInsights>();
         private string footerNote = "";
         public bool Pinned;
         public SoftButton RefreshButton;
         public SoftButton SettingsButton;
         public event EventHandler RefreshRequested;
         public event EventHandler SettingsRequested;
+        public event Action<string> DetailsRequested;
         public event Action<int, IntPtr> RawInputReceived;
 
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
@@ -74,11 +76,12 @@ namespace PeripheralBatteryLite
         }
 
         public void UpdateData(List<BatteryReading> snapshot, List<IBatteryProvider> registry,
-            AppPreferences settings)
+            AppPreferences settings, Dictionary<string, BatteryInsights> trends = null)
         {
             readings = snapshot ?? new List<BatteryReading>();
             providers = registry ?? new List<IBatteryProvider>();
             prefs = settings ?? new AppPreferences();
+            insights = trends ?? new Dictionary<string, BatteryInsights>();
             Pinned = prefs.PinPanel;
             int count = Math.Max(3, Math.Min(5, providers.Count));
             int height = 130 + count * 88 + 30;
@@ -122,7 +125,8 @@ namespace PeripheralBatteryLite
             string badge = prefs.IntervalMinutes == 0 ? "手动刷新" :
                 (prefs.IntervalMinutes == 30 ? "30 分钟" :
                 (prefs.IntervalMinutes == 60 ? "1 小时" :
-                (prefs.IntervalMinutes == 120 ? "2 小时" : "5 小时")));
+                (prefs.IntervalMinutes == 120 ? "2 小时" :
+                (prefs.IntervalMinutes == 240 ? "4 小时" : "5 小时"))));
             UiTheme.FillRound(g, Color.FromArgb(38, 55, 71),
                 new Rectangle(299, 26, 90, 25), 11);
             UiTheme.TextAt(g, badge, 8.4f, true, UiTheme.Accent,
@@ -134,21 +138,26 @@ namespace PeripheralBatteryLite
                 IBatteryProvider p = i < visible.Count ? visible[i] : null;
                 BatteryReading r = p == null ? null :
                     readings.FirstOrDefault(x => x.Name == p.Id);
-                DrawDevice(g, new Rectangle(16, 83 + i * 88, Width - 32, 80), p, r, i);
+                BatteryInsights trend = null;
+                if (p != null) insights.TryGetValue(p.Id, out trend);
+                DrawDevice(g, new Rectangle(16, 83 + i * 88, Width - 32, 80),
+                    p, r, i, prefs, trend);
             }
             string footer = !string.IsNullOrEmpty(footerNote) ? footerNote :
                 prefs.IntervalMinutes == 0 ? "不会后台查询设备" :
-                (prefs.OnlyWhenDeviceActive ? "自动刷新 · 仅限活跃设备" : "自动刷新已启用");
+                "点击卡片看详情 · " + (prefs.IntervalMinutes == 240 ? "4小时" : "定时") + "查询";
             UiTheme.TextAt(g, footer, 7.6f, false, UiTheme.Secondary,
                 new RectangleF(110, Height - 45, 158, 29), ContentAlignment.MiddleLeft);
         }
 
         private static void DrawDevice(Graphics g, Rectangle area,
-            IBatteryProvider provider, BatteryReading reading, int index)
+            IBatteryProvider provider, BatteryReading reading, int index,
+            AppPreferences prefs, BatteryInsights trend)
         {
             UiTheme.FillRound(g, UiTheme.Card, area, 11);
             UiTheme.BorderRound(g, UiTheme.CardBorder, area, 11);
-            string title = provider == null ? "未连接设备" : provider.DisplayName;
+            string title = provider == null ? "未连接设备" :
+                prefs.NameOf(provider.Id, provider.DisplayName);
             string symbol = provider == null ? "?" :
                 provider.Activity == ActivityCategory.Mouse ? "M" :
                 provider.Activity == ActivityCategory.Keyboard ? "K" :
@@ -165,7 +174,8 @@ namespace PeripheralBatteryLite
             bool valid = reading != null && reading.Percent.HasValue;
             int percent = valid ? reading.Percent.Value : 0;
             string level = valid ? percent.ToString() + "%" : "--";
-            Color levelColor = !valid ? UiTheme.Secondary : percent <= 20 ?
+            int threshold = provider == null ? 20 : prefs.GetDevice(provider.Id).AlertThreshold;
+            Color levelColor = !valid ? UiTheme.Secondary : percent <= threshold ?
                 UiTheme.Warning : UiTheme.Accent;
             UiTheme.TextAt(g, level, 16f, true, levelColor,
                 new RectangleF(area.Right - 113, area.Y + 8, 97, 33),
@@ -173,6 +183,10 @@ namespace PeripheralBatteryLite
             // Success and failure timestamps are independent. A failed read
             // must never hide the timestamp behind the cached percentage.
             string[] lines = DescribeReading(reading);
+            if (trend != null && trend.DailyPercent.HasValue && valid &&
+                reading.Status != "Previous query failed" && reading.Charging != true)
+                lines[1] = "平均耗电 " + trend.DailyPercent.Value.ToString("0.0") +
+                    "%/天 · 达阈值 " + BatteryInsights.Duration(trend.DaysToThreshold);
             UiTheme.TextAt(g, lines[0], 7.5f, false, UiTheme.Secondary,
                 new RectangleF(area.X + 52, area.Y + 32, area.Width - 71, 16),
                 ContentAlignment.MiddleLeft);
@@ -242,9 +256,19 @@ namespace PeripheralBatteryLite
                    empty[0].Contains("尚未查询");
         }
 
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            base.OnMouseClick(e);
+            if (e.Button != MouseButtons.Left || e.Y < 83) return;
+            int index = (e.Y - 83) / 88;
+            if (index >= 0 && index < providers.Count && index < 5 &&
+                (e.Y - 83) % 88 < 80 && DetailsRequested != null)
+                DetailsRequested(providers[index].Id);
+        }
+
         private void OnDrag(object sender, MouseEventArgs e)
         {
-            if (e.Button != MouseButtons.Left) return;
+            if (e.Button != MouseButtons.Left || e.Y > 72) return;
             ReleaseCapture();
             SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero);
         }

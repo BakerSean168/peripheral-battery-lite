@@ -18,6 +18,7 @@ namespace PeripheralBatteryLite
         [DataMember(Order = 4)] public string LastQueryUtc;
         [DataMember(Order = 5)] public string LastSuccessUtc;
         [DataMember(Order = 6)] public bool LastQuerySucceeded;
+        [DataMember(Order = 7)] public int? VoltageMillivolts;
     }
 
     [DataContract]
@@ -103,6 +104,7 @@ namespace PeripheralBatteryLite
                     Pid = id == Mouse ? (ushort)0x1303 : id == Keyboard ? (ushort)0x5088 : (ushort)0x2232,
                     Percent = successful.HasValue ? stored.Percent : null,
                     Charging = successful.HasValue ? stored.Charging : null,
+                    VoltageMillivolts = successful.HasValue ? stored.VoltageMillivolts : null,
                     Status = !attempted.HasValue ? "Not queried" :
                         !stored.LastQuerySucceeded ? "Previous query failed" : "Cached",
                     LastSuccessUtc = successful,
@@ -137,6 +139,7 @@ namespace PeripheralBatteryLite
                 {
                     stored.Percent = newReading.Percent.Value;
                     stored.Charging = newReading.Charging;
+                    stored.VoltageMillivolts = newReading.VoltageMillivolts;
                     stored.LastSuccessUtc = time;
                 }
             }
@@ -181,13 +184,15 @@ namespace PeripheralBatteryLite
                     return false;
                 store.MergeAndSave(new[]
                 {
-                    new BatteryReading { Name = Mouse, Percent = 85, Charging = false, Status = "OK" },
+                    new BatteryReading { Name = Mouse, Percent = 85, Charging = false,
+                        VoltageMillivolts = 3732, Status = "OK" },
                     new BatteryReading { Name = Keyboard, Percent = 100, Charging = false, Status = "OK" },
                     new BatteryReading { Name = Headset, Percent = 73, Charging = false, Status = "OK" }
                 });
                 if (store.LastSaveError != null || !File.Exists(file)) return false;
                 var loaded = new BatterySnapshotStore(file).Snapshot();
-                if (loaded.Count != 3 || loaded[0].Percent != 85 || loaded[1].Percent != 100 ||
+                if (loaded.Count != 3 || loaded[0].Percent != 85 ||
+                    loaded[0].VoltageMillivolts != 3732 || loaded[1].Percent != 100 ||
                     loaded[2].Percent != 73 || loaded.Any(x => !x.LastQueryUtc.HasValue))
                     return false;
                 DateTime initialSuccess = loaded[1].LastSuccessUtc.Value;

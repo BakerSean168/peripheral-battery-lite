@@ -26,6 +26,9 @@ $sourceFiles = @(
     'Core\AppDataPaths.cs',
     'Core\AppPreferences.cs',
     'Core\RefreshPolicy.cs',
+    'Core\BatteryHistoryStore.cs',
+    'Core\BatteryInsights.cs',
+    'Core\BatteryAlertStore.cs',
     'Core\BatteryCoordinator.cs',
     'Core\IsolatedQueryHost.cs',
     'Providers\ProviderRegistry.cs',
@@ -33,6 +36,7 @@ $sourceFiles = @(
     'Platform\StartupRegistration.cs',
     'UI\UiTheme.cs',
     'UI\BatteryPanel.cs',
+    'UI\DeviceDetailForm.cs',
     'UI\SettingsForm.cs',
     'UI\BatteryTrayApp.cs'
 ) | ForEach-Object { Join-Path $root $_ }
