@@ -24,10 +24,11 @@
 - **Optional activity-only refresh:** passive Windows Raw Input device headers identify recent use of supported mice and keyboards, without logging typed characters. There is no reliable passive headset awake signal: audio providers remain manual-only when activity-only is on.
 - **Concurrent per-device query processes:** up to three isolated HID readers run in parallel, with each completed device card updated immediately. A stalled device does not block the others.
 - **Local cache:** preserve the last successful battery value and its timestamp, alongside the most recent failure time. Unchanged percentages reuse the existing tray icon.
-- **Per-device low-battery alerts:** editable threshold (45% default, alerts opt-in), Windows balloon notifications with deduplication, quiet hours, 24-hour snooze, notification history.
+- **Per-device low-battery alerts:** editable threshold (45% default, alerts opt-in), Windows balloon notifications with deduplication, quiet hours, 24-hour snooze and a manual notification test. The notification log records submissions, not proof a Windows banner was visible.
 - **Battery analytics:** sampled history, 7/30/90/180-day plots, CSV export, guarded discharge/remaining-runtime estimates; optional user-supplied nominal capacity for **estimated** mAh and average equivalent mA (not real-time current).
 - **Device details and tray customization:** click a device card to edit nickname, alerts and per-device polling; select a fixed device or recent-lowest battery for the tray icon.
-- **ATK voltage:** parse a plausible millivolt field from the existing 17-byte mouse reply. Live voltage for this exact receiver has not yet been validated.
+- **ATK voltage:** parse millivolts from the existing 17-byte mouse reply; live samples have now produced plausible values on the owner’s receiver.
+- **Nova 5 offline detection:** inspect the dongle’s link-state field before battery percent; a powered-off headset may otherwise appear as `0%`. Offline readings retain the last valid value and do not enter the history or trigger a charge alert. A genuine online 0% still counts as empty.
 - **Opt-in Windows login startup** using the current user's Run key.
 - **Extensible protocol providers:** three built-in `IBatteryProvider` implementations, plus optional compiled .NET Framework DLL providers. Third-party DLLs are disabled by default and **are not sandboxed**.
 

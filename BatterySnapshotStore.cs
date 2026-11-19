@@ -19,6 +19,7 @@ namespace PeripheralBatteryLite
         [DataMember(Order = 5)] public string LastSuccessUtc;
         [DataMember(Order = 6)] public bool LastQuerySucceeded;
         [DataMember(Order = 7)] public int? VoltageMillivolts;
+        [DataMember(Order = 8)] public string LastQueryStatus;
     }
 
     [DataContract]
@@ -106,7 +107,9 @@ namespace PeripheralBatteryLite
                     Charging = successful.HasValue ? stored.Charging : null,
                     VoltageMillivolts = successful.HasValue ? stored.VoltageMillivolts : null,
                     Status = !attempted.HasValue ? "Not queried" :
-                        !stored.LastQuerySucceeded ? "Previous query failed" : "Cached",
+                        stored.LastQuerySucceeded ? "Cached" :
+                        stored.LastQueryStatus == "Device offline" ? "Device offline" :
+                        "Previous query failed",
                     LastSuccessUtc = successful,
                     LastQueryUtc = attempted,
                     Connection = "2.4G receiver",
@@ -135,6 +138,7 @@ namespace PeripheralBatteryLite
                 bool okay = newReading.Status == "OK" && newReading.Percent.HasValue &&
                     newReading.Percent.Value >= 0 && newReading.Percent.Value <= 100;
                 stored.LastQuerySucceeded = okay;
+                stored.LastQueryStatus = newReading.Status;
                 if (okay)
                 {
                     stored.Percent = newReading.Percent.Value;
@@ -203,6 +207,16 @@ namespace PeripheralBatteryLite
                 var afterFailure = new BatterySnapshotStore(file).Snapshot();
                 if (afterFailure[1].Percent != 100 || afterFailure[1].LastSuccessUtc != initialSuccess ||
                     afterFailure[1].Status != "Previous query failed") return false;
+                // Offline must not overwrite the most recent genuine battery value.
+                DateTime headsetSuccess = loaded[2].LastSuccessUtc.Value;
+                store.MergeAndSave(new[] {
+                    new BatteryReading { Name = Headset, Status = "Device offline" }
+                });
+                var afterOffline = new BatterySnapshotStore(file).Snapshot()[2];
+                if (afterOffline.Percent != 73 || afterOffline.Charging != false ||
+                    afterOffline.LastSuccessUtc != headsetSuccess ||
+                    afterOffline.Status != "Device offline" ||
+                    afterOffline.LastQueryUtc <= headsetSuccess) return false;
                 if (new BatterySnapshotStore(Path.Combine(folder, "absent.json")).Snapshot()
                     .Any(x => x.Percent.HasValue)) return false;
                 // A broken/corrupt cache should be ignored without querying real hardware.

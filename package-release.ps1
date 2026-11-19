@@ -3,7 +3,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 & (Join-Path $root 'build.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$version = '0.8.0'
+$version = '0.8.1'
 $out = Join-Path $root ("dist\PeripheralBatteryLite-v$version-windows-x64.zip")
 $temp = Join-Path $env:TEMP ("PBL-release-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $temp | Out-Null

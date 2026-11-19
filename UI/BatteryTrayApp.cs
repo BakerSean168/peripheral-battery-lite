@@ -68,6 +68,13 @@ namespace PeripheralBatteryLite
             }
             menu.Items.Add(detailMenu);
             menu.Items.Add("偏好设置...", null, (s, e) => ShowSettings());
+            menu.Items.Add("测试 Windows 提醒", null, (s, e) =>
+            {
+                lastAlertDevice = null;
+                tray.ShowBalloonTip(10000, "Peripheral Battery · 测试通知",
+                    "这是一条测试通知，不会修改电量或提醒状态。若未弹出，请检查 Windows 免打扰及通知设置。",
+                    ToolTipIcon.Info);
+            });
             menu.Items.Add(new ToolStripSeparator());
             pinnedMenu = new ToolStripMenuItem("固定悬浮窗") { Checked = prefs.PinPanel, CheckOnClick = true };
             pinnedMenu.CheckedChanged += (s, e) =>
@@ -227,21 +234,23 @@ namespace PeripheralBatteryLite
                 var reading = snapshots.FirstOrDefault(r => r.Name == provider.Id);
                 var config = prefs.GetDevice(provider.Id);
                 trends[provider.Id] = BatteryInsights.Calculate(history.Recent(provider.Id, 30),
-                    reading == null ? null : reading.Percent,
+                    reading != null && reading.Status == "Cached" ? reading.Percent : null,
                     config.AlertThreshold, config.RatedCapacityMah);
             }
             panel.UpdateData(snapshots, providers, prefs, trends);
             BatteryReading selected = null;
             if (prefs.TrayIconDeviceId == "lowest")
                 selected = snapshots.Where(r => r.Percent.HasValue &&
-                    r.LastSuccessUtc.HasValue && r.Status != "Previous query failed" &&
+                    r.LastSuccessUtc.HasValue && r.Status == "Cached" &&
                     DateTime.UtcNow - r.LastSuccessUtc.Value.ToUniversalTime() < TimeSpan.FromHours(24))
                     .OrderBy(r => r.Percent.Value).FirstOrDefault();
             else
                 selected = snapshots.FirstOrDefault(r => r.Name == prefs.TrayIconDeviceId);
-            string number = selected != null && selected.Percent.HasValue ?
+            string number = selected != null && selected.Percent.HasValue &&
+                selected.Status != "Device offline" ?
                 selected.Percent.Value.ToString() : "--";
             Color tint = selected != null && selected.Percent.HasValue &&
+                selected.Status == "Cached" &&
                 selected.Percent.Value <= prefs.GetDevice(selected.Name).AlertThreshold ?
                 UiTheme.Warning : UiTheme.Accent;
             // Generating Win32 HICONs allocates native GDI resources. Only
@@ -270,7 +279,10 @@ namespace PeripheralBatteryLite
         private static string Value(List<BatteryReading> values, string name)
         {
             var r = values.FirstOrDefault(x => x.Name == name);
-            return r != null && r.Percent.HasValue ? r.Percent.Value + "%" : "--";
+            if (r == null) return "--";
+            if (r.Status == "Device offline")
+                return r.Percent.HasValue ? "离线(上次" + r.Percent.Value + "%)" : "离线";
+            return r.Percent.HasValue ? r.Percent.Value + "%" : "--";
         }
 
         private void TryNotifyFromCache()

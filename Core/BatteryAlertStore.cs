@@ -139,7 +139,7 @@ namespace PeripheralBatteryLite
                 // after a successful reading up to 24 hours old.
                 if (!reading.LastSuccessUtc.HasValue ||
                     nowUtc - reading.LastSuccessUtc.Value.ToUniversalTime() > TimeSpan.FromHours(24) ||
-                    reading.Status == "Previous query failed" || reading.Charging == true ||
+                    reading.Status != "Cached" || reading.Charging == true ||
                     !reading.Percent.HasValue || reading.Percent.Value > config.AlertThreshold)
                     continue;
                 state.Pending = false;
@@ -228,6 +228,11 @@ namespace PeripheralBatteryLite
                 if (reloaded.DeliverPending(prefs, new[] { fresh }, now.AddHours(25)).Count != 0)
                     return false;
                 prefs.QuietHoursEnabled = false;
+                var offline = reading(40);
+                offline.LastSuccessUtc = now.AddHours(25);
+                offline.Status = "Device offline";
+                if (reloaded.DeliverPending(prefs, new[] { offline }, now.AddHours(25)).Count != 0)
+                    return false; // Offline data never drains a queued notification.
                 if (reloaded.DeliverPending(prefs, new[] { fresh }, now.AddHours(25)).Count != 1)
                     return false;
                 return new BatteryAlertStore(path).RecentNotifications("mouse").Count == 2;

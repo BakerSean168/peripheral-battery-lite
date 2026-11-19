@@ -62,13 +62,15 @@ namespace PeripheralBatteryLite
                 snapshot.Percent.Value <= config.AlertThreshold ?
                 UiTheme.Warning : UiTheme.Accent, ContentAlignment.MiddleRight);
             string status = snapshot == null || !snapshot.LastSuccessUtc.HasValue ?
-                "尚无可靠电量记录" :
+                (snapshot != null && snapshot.Status == "Device offline" ?
+                    "耳机已关机或断连 · 暂无有效电量" : "尚无可靠电量记录") :
                 "上次成功：" + snapshot.LastSuccessUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") +
-                (snapshot.Status == "Previous query failed" ? "  ·  最近查询失败，沿用历史值" : "") +
-                (snapshot.Charging == true ? "  ·  充电中" : "");
+                (snapshot.Status == "Device offline" ? "  ·  当前离线，显示上次有效数据" :
+                 snapshot.Status == "Previous query failed" ? "  ·  最近查询失败，沿用历史值" : "") +
+                (snapshot.Charging == true && snapshot.Status == "Cached" ? "  ·  充电中" : "");
             LabelAt(this, status, 23, 66, 626, 24, 8.6f, false,
-                snapshot != null && snapshot.Status == "Previous query failed" ?
-                UiTheme.Warning : UiTheme.Secondary);
+                snapshot != null && (snapshot.Status == "Previous query failed" ||
+                    snapshot.Status == "Device offline") ? UiTheme.Warning : UiTheme.Secondary);
 
             var tabs = new TabControl {
                 Location = new Point(19, 104), Size = new Size(641, 454),
@@ -168,7 +170,7 @@ namespace PeripheralBatteryLite
             LabelAt(preferencesPage, "不会影响手动刷新；定时查询不会在电脑休眠时运行。",
                 235, 347, 367, 33, 8f, false, UiTheme.Secondary);
 
-            LabelAt(logPage, "最近发送的低电量提醒", 17, 15, 520, 28,
+            LabelAt(logPage, "最近提交给 Windows 的提醒（不代表已弹出）", 17, 15, 580, 28,
                 10.5f, true, UiTheme.Text);
             notificationHistory = new ListView {
                 Location = new Point(16, 57), Size = new Size(597, 335),
@@ -211,7 +213,7 @@ namespace PeripheralBatteryLite
             chart.Threshold = initial.GetDevice(id).AlertThreshold;
             chart.Invalidate();
             var analysis = BatteryInsights.Calculate(history.Recent(id, 30),
-                reading == null ? null : reading.Percent,
+                reading == null || reading.Status != "Cached" ? null : reading.Percent,
                 initial.GetDevice(id).AlertThreshold,
                 initial.GetDevice(id).RatedCapacityMah);
             insightLabel.Text = analysis.DailyPercent.HasValue ?

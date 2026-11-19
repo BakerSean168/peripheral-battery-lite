@@ -11,7 +11,7 @@ namespace PeripheralBatteryLite
 {
     internal static class Program
     {
-        private const string Version = "0.8.0";
+        private const string Version = "0.8.1";
         [STAThread]
         private static void Main(string[] args)
         {
@@ -56,6 +56,7 @@ namespace PeripheralBatteryLite
                 bool history = BatteryHistoryStore.SelfTest();
                 bool insights = BatteryInsights.SelfTest();
                 bool alerts = BatteryAlertStore.SelfTest();
+                bool offlineRegression = OfflineReadingRegression.SelfTest();
                 Console.WriteLine("Protocol parsers: " + (protocol ? "PASS" : "FAIL"));
                 Console.WriteLine("Provider registry: " + (registry ? "PASS" : "FAIL"));
                 Console.WriteLine("Refresh policy: " + (policy ? "PASS" : "FAIL"));
@@ -67,8 +68,11 @@ namespace PeripheralBatteryLite
                 Console.WriteLine("Battery history and CSV export: " + (history ? "PASS" : "FAIL"));
                 Console.WriteLine("Drain and capacity estimates: " + (insights ? "PASS" : "FAIL"));
                 Console.WriteLine("Notification state and snooze: " + (alerts ? "PASS" : "FAIL"));
+                Console.WriteLine("Headset offline vs real zero: " +
+                    (offlineRegression ? "PASS" : "FAIL"));
                 Environment.ExitCode = protocol && registry && policy && settings && cache &&
-                    isolated && storage && staleUi && history && insights && alerts ? 0 : 1;
+                    isolated && storage && staleUi && history && insights && alerts &&
+                    offlineRegression ? 0 : 1;
                 return;
             }
             if (arg == "--plugin-self-test")
@@ -183,12 +187,27 @@ namespace PeripheralBatteryLite
                 }
                 return;
             }
-            if (arg == "--render-preview")
+            if (arg == "--render-preview" || arg == "--render-preview-offline")
             {
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 var providers = ProviderRegistry.Load(false);
                 var cached = new BatterySnapshotStore().Snapshot(providers.Select(x => x.Id));
+                if (arg == "--render-preview-offline")
+                {
+                    DateTime now = DateTime.UtcNow;
+                    foreach (var reading in cached)
+                    {
+                        reading.Percent = reading.Name == BatterySnapshotStore.Mouse ? 70 :
+                            reading.Name == BatterySnapshotStore.Keyboard ? 100 : 47;
+                        reading.Status = reading.Name == BatterySnapshotStore.Headset ?
+                            "Device offline" : "Cached";
+                        reading.Charging = false;
+                        reading.LastQueryUtc = now;
+                        reading.LastSuccessUtc = reading.Name == BatterySnapshotStore.Headset ?
+                            now.AddDays(-1) : now;
+                    }
+                }
                 using (var panel = new BatteryPanel())
                 {
                     panel.UpdateData(cached, providers, new AppPreferencesStore().Load());
@@ -197,7 +216,10 @@ namespace PeripheralBatteryLite
                     using (var bitmap = new Bitmap(panel.Width, panel.Height))
                     {
                         panel.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
-                        string location = Path.Combine(Path.GetTempPath(), "PeripheralBatteryLite-preview.png");
+                        string location = Path.Combine(Path.GetTempPath(),
+                            arg == "--render-preview-offline" ?
+                            "PeripheralBatteryLite-offline-preview.png" :
+                            "PeripheralBatteryLite-preview.png");
                         bitmap.Save(location, ImageFormat.Png);
                         Console.WriteLine("PREVIEW=" + location);
                     }
@@ -206,10 +228,11 @@ namespace PeripheralBatteryLite
                 return;
             }
             if (arg == "--cache-self-test" || arg == "--scheduler-self-test" ||
-                arg == "--analysis-self-test")
+                arg == "--analysis-self-test" || arg == "--headset-offline-self-test")
             {
                 bool ok = arg == "--cache-self-test" ? BatterySnapshotStore.SelfTest() :
                     arg == "--scheduler-self-test" ? RefreshPolicy.SelfTest() :
+                    arg == "--headset-offline-self-test" ? OfflineReadingRegression.SelfTest() :
                     BatteryHistoryStore.SelfTest() && BatteryInsights.SelfTest() &&
                     BatteryAlertStore.SelfTest();
                 Console.WriteLine(ok ? "PASS" : "FAIL");

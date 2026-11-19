@@ -29,6 +29,7 @@ $sourceFiles = @(
     'Core\BatteryHistoryStore.cs',
     'Core\BatteryInsights.cs',
     'Core\BatteryAlertStore.cs',
+    'Core\OfflineReadingRegression.cs',
     'Core\BatteryCoordinator.cs',
     'Core\IsolatedQueryHost.cs',
     'Providers\ProviderRegistry.cs',

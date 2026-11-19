@@ -1,6 +1,6 @@
 # Battery Analytics, Notifications, and Hardware Telemetry
 
-Research and implementation snapshot: **2026-11-18**.
+Research and implementation snapshot: **2026-11-19** (v0.8.1 offline fix).
 
 Peripheral Battery Lite remains a device-specific Windows WinForms tray. No
 new or undocumented HID commands were added for these features. All telemetry
@@ -19,17 +19,19 @@ continues to run in per-device, time-limited child processes.
 - Each device: alert enabled/disabled (disabled by default) and a threshold
   from 5% to 95% (45% default).
 - A successful new battery reading below or equal to its threshold and
-  **not charging** queues a Windows NotifyIcon balloon warning.
+  **not charging** queues a Windows NotifyIcon balloon warning. Offline and
+  failed replies do not count as successful battery readings.
 - The same discharge episode alerts **once only**. It resets after a
   successful reading at or above threshold + 5 percentage points.
 - A quiet-hours window suppresses delivery but keeps pending alerts. Pending
   warnings must still have a successful reading no older than 24 h.
 - The device detail form offers a persistent 24-hour snooze, plus a history
-  of the last 200 delivered notifications across devices. The Windows OS
+  of the last 200 submitted notifications across devices. The Windows OS
   may hide balloons under Do Not Disturb; log entries mean the notification
   was submitted to Windows, not that a human necessarily saw it.
 - The notification state is kept separately in battery-alerts.json and
-  survives app restarts.
+  survives app restarts. The history is of **submissions to Windows**, not
+  verified delivery; use the tray menu "测试 Windows 提醒" to test banner visibility.
 - Startup and tray hover do not query HID. An explicit left-click refresh
   continues to work, even with scheduled polling disabled.
 
@@ -77,7 +79,7 @@ protocol mapping from a live read on the owner's exact receiver.
 | --- | --- | --- | --- |
 | ATK F1V3 / 373B:1303 | 17-byte 0x08/0x04 battery %, charging | Compx battery reply bytes [8..9] are big-endian mV; code now extracts only plausible 2500–4800 mV and carries it through cache/history/CSV | Official ATK F1 V3 lists **300 mAh for Ultimate+** and **200 mAh for Extreme+**. User must specify which. |
 | VXE V87 / 320F:5088 | 64-byte status command 0x1A, %, charging | No proven voltage/current/mAh field in our confirmed response | V87 guides list **4000 mAh regular** and **8000 mAh Pro**; exact unit variant must be checked. |
-| SteelSeries Arctis Nova 5 / 1038:2232 | 0xB0 status query, %, charging | No confirmed voltage/current/mAh from the status reply; some similar family models use different byte layouts | SteelSeries advertises **up to 60 h runtime**, not a definitive cell capacity. Retailer spec may mention 620 mAh but is not verified for this unit. |
+| SteelSeries Arctis Nova 5 / 1038:2232 | 0xB0 status query, %, charging, **receiver link-state byte (offline = 0x02)** | The receiver may report an offline placeholder `0%`; the updated parser ignores its battery bytes and keeps last valid data. No confirmed voltage/current/mAh. | SteelSeries advertises **up to 60 h runtime**, not a definitive cell capacity. Retailer spec may mention 620 mAh but is not verified for this unit. |
 
 ### Source material
 
@@ -88,17 +90,18 @@ protocol mapping from a live read on the owner's exact receiver.
 - [Compx byte positions and charger flag](https://github.com/HeyOkay/HaloBattery/issues/82)
 - [SteelSeries status 0xB0 and model-specific layout caveat](https://github.com/Ven0m0/steelseriesgg-rs/blob/main/docs/development/devices.md)
 - [Windows NotifyIcon balloons](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=netframework-4.8)
+- [Linux SteelSeries patch: Nova 5 `data[1] == 0x02` means offline](https://lore-kernel.gnuweeb.org/lkml/20260112041941.40531-5-srimanachanta%40gmail.com/)
+- [Per-model Nova 5 state mapping (Win32 reports include a leading Report ID)](https://github.com/o0Zz/PeripheralBatteryMonitor/blob/master/src/PeripheralBatteryMonitor.Core/Providers/SteelSeries/SteelSeriesBatteryProvider.cs)
 
 ### Validation status and remaining hardware boundary
 
 - Unit tests verify Compx parsing with 3732 mV from a checksum-valid
   synthetic frame, rejection of impossible voltage values, and safe
   transport from the child probe to the tray.
-- **A live, read-only F1V3 battery query on this Windows machine timed
-  out in a 4-second isolated query; an additional direct test reached
-  12 seconds without returning.** This means the new voltage field is
-  **not yet live-verified on this specific F1V3**, even though the published
-  same-family packet mapping is plausible.
+- **F1V3 voltage verified subsequently on the owner’s hardware.** Initial
+  attempts timed out, but later cache/history entries contain valid responses
+  with voltages 4113 mV, 4108 mV and 4095 mV, as well as percentages 75%/70%.
+  The code still returns unknown on failed reads rather than fabricating data.
 - Do not claim measured milliamps, battery health, charge cycles, or true
   remaining mAh. The validated commands return percent, charge status,
   and potentially F1V3 voltage; they do not provide coulomb counter or
@@ -107,6 +110,13 @@ protocol mapping from a live read on the owner's exact receiver.
   USB packet captures of vendor software, or trusted published captures
   before changing report parsers. Never fuzz commands, write firmware,
   change pairing, or send experimental device settings through this app.
+- The Nova 5 receiver was physically checked in the **off state** on
+  2026-11-19: a read-only `--headset-only` command reported `Device offline`
+  with `percent=null` and `charging=null` instead of a fake 0%.
+  Distinguish state (0x02) from the level byte; an online 0% remains a valid
+  reading. The cache reports `Device offline` and displays its last valid
+  level with a stale label, while the icon selection excludes it from
+  current minimum-battery ranking. No offline sample or alert is generated.
 - Running .\dist\PeripheralBatteryLite.Probe.exe --mouse-only performs the
   existing read-only mouse query; do not run it repeatedly just to fill
   history. Normal UI refresh should handle safe timeout and recover later.
@@ -119,6 +129,7 @@ Windows PowerShell (run from the source checkout):
 .\build.ps1
 .\dist\PeripheralBatteryLite.Probe.exe --self-test
 .\dist\PeripheralBatteryLite.Probe.exe --analysis-self-test
+.\dist\PeripheralBatteryLite.Probe.exe --headset-offline-self-test
 .\dist\PeripheralBatteryLite.Probe.exe --scheduler-self-test
 .\dist\PeripheralBatteryLite.Probe.exe --storage-paths
 .\dist\PeripheralBatteryLite.Probe.exe --history-show

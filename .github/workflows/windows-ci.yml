@@ -26,6 +26,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\PeripheralBatteryLite.Probe.exe --ui-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\dist\PeripheralBatteryLite.Probe.exe --headset-offline-self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & .\dist\PeripheralBatteryLite.Probe.exe --cache-self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $paths = & .\dist\PeripheralBatteryLite.Probe.exe --storage-paths
@@ -59,7 +61,7 @@ jobs:
             dist/PeripheralBatteryLite.Probe.exe
             dist/PeripheralBatteryLite.Contracts.dll
             dist/portable.flag
-            dist/PeripheralBatteryLite-v0.8.0-windows-x64.zip
+            dist/PeripheralBatteryLite-v0.8.1-windows-x64.zip
             LICENSE
             README.md
             README.en.md

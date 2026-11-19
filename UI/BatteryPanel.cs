@@ -175,7 +175,8 @@ namespace PeripheralBatteryLite
             int percent = valid ? reading.Percent.Value : 0;
             string level = valid ? percent.ToString() + "%" : "--";
             int threshold = provider == null ? 20 : prefs.GetDevice(provider.Id).AlertThreshold;
-            Color levelColor = !valid ? UiTheme.Secondary : percent <= threshold ?
+            bool offline = reading != null && reading.Status == "Device offline";
+            Color levelColor = !valid || offline ? UiTheme.Secondary : percent <= threshold ?
                 UiTheme.Warning : UiTheme.Accent;
             UiTheme.TextAt(g, level, 16f, true, levelColor,
                 new RectangleF(area.Right - 113, area.Y + 8, 97, 33),
@@ -184,7 +185,7 @@ namespace PeripheralBatteryLite
             // must never hide the timestamp behind the cached percentage.
             string[] lines = DescribeReading(reading);
             if (trend != null && trend.DailyPercent.HasValue && valid &&
-                reading.Status != "Previous query failed" && reading.Charging != true)
+                reading.Status == "Cached" && reading.Charging != true)
                 lines[1] = "平均耗电 " + trend.DailyPercent.Value.ToString("0.0") +
                     "%/天 · 达阈值 " + BatteryInsights.Duration(trend.DaysToThreshold);
             UiTheme.TextAt(g, lines[0], 7.5f, false, UiTheme.Secondary,
@@ -214,6 +215,15 @@ namespace PeripheralBatteryLite
                 return new[] { "尚未查询 · 点击刷新", "本地缓存 · 不触发设备查询" };
 
             string attempted = reading.LastQueryUtc.Value.ToLocalTime().ToString("MM-dd HH:mm");
+            if (reading.Status == "Device offline")
+            {
+                if (reading.LastSuccessUtc.HasValue)
+                    return new[] {
+                        "上次有效 " + reading.LastSuccessUtc.Value.ToLocalTime().ToString("MM-dd HH:mm"),
+                        "耳机已关机或断连 · 显示旧值"
+                    };
+                return new[] { "最近查询 " + attempted, "耳机已关机或断连 · 电量未知" };
+            }
             if (reading.Status == "Previous query failed")
             {
                 if (reading.LastSuccessUtc.HasValue)
@@ -248,7 +258,12 @@ namespace PeripheralBatteryLite
                 Status = "Cached"
             });
             string[] empty = DescribeReading(null);
-            return stale[0].Contains(expectedSuccess) &&
+            string[] offline = DescribeReading(new BatteryReading {
+                Percent = 85, LastSuccessUtc = success, LastQueryUtc = failed,
+                Status = "Device offline"
+            });
+            return offline[0].Contains("上次有效") && offline[1].Contains("断连") &&
+                   stale[0].Contains(expectedSuccess) &&
                    stale[1].Contains(expectedFailure) &&
                    stale[1].Contains("失败") &&
                    fresh[0].Contains(expectedSuccess) &&
